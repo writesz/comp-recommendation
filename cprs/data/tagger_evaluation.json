@@ -1,0 +1,122 @@
+{
+  "math": {
+    "precision": 0.6688668866886689,
+    "recall": 0.7203791469194313,
+    "f1-score": 0.6936679977181974,
+    "support": 844.0
+  },
+  "greedy": {
+    "precision": 0.6462212486308871,
+    "recall": 0.6797235023041475,
+    "f1-score": 0.6625491297024144,
+    "support": 868.0
+  },
+  "dynamic_programming": {
+    "precision": 0.24060150375939848,
+    "recall": 0.1711229946524064,
+    "f1-score": 0.2,
+    "support": 187.0
+  },
+  "implementation": {
+    "precision": 0.5792349726775956,
+    "recall": 0.5980253878702397,
+    "f1-score": 0.5884802220680083,
+    "support": 709.0
+  },
+  "data_structures": {
+    "precision": 0.24342105263157895,
+    "recall": 0.2803030303030303,
+    "f1-score": 0.2605633802816901,
+    "support": 132.0
+  },
+  "brute_force": {
+    "precision": 0.260989010989011,
+    "recall": 0.23809523809523808,
+    "f1-score": 0.2490170380078637,
+    "support": 399.0
+  },
+  "sorting": {
+    "precision": 0.3090909090909091,
+    "recall": 0.4075342465753425,
+    "f1-score": 0.3515509601181684,
+    "support": 292.0
+  },
+  "strings": {
+    "precision": 0.6402877697841727,
+    "recall": 0.8640776699029126,
+    "f1-score": 0.7355371900826446,
+    "support": 206.0
+  },
+  "binary_search": {
+    "precision": 0.24603174603174602,
+    "recall": 0.2440944881889764,
+    "f1-score": 0.2450592885375494,
+    "support": 127.0
+  },
+  "two_pointers": {
+    "precision": 0.1875,
+    "recall": 0.18,
+    "f1-score": 0.1836734693877551,
+    "support": 100.0
+  },
+  "dfs": {
+    "precision": 0.5294117647058824,
+    "recall": 0.33962264150943394,
+    "f1-score": 0.41379310344827586,
+    "support": 53.0
+  },
+  "number_theory": {
+    "precision": 0.5212121212121212,
+    "recall": 0.49142857142857144,
+    "f1-score": 0.5058823529411764,
+    "support": 175.0
+  },
+  "constructive": {
+    "precision": 0.4649298597194389,
+    "recall": 0.5563549160671463,
+    "f1-score": 0.5065502183406113,
+    "support": 417.0
+  },
+  "combinatorics": {
+    "precision": 0.18181818181818182,
+    "recall": 0.07407407407407407,
+    "f1-score": 0.10526315789473684,
+    "support": 54.0
+  },
+  "game_theory": {
+    "precision": 0.6666666666666666,
+    "recall": 0.8148148148148148,
+    "f1-score": 0.7333333333333333,
+    "support": 54.0
+  },
+  "bitmask": {
+    "precision": 0.75,
+    "recall": 0.4074074074074074,
+    "f1-score": 0.528,
+    "support": 81.0
+  },
+  "micro avg": {
+    "precision": 0.5183001220008133,
+    "recall": 0.542571306939123,
+    "f1-score": 0.5301580698835274,
+    "support": 4698.0
+  },
+  "macro avg": {
+    "precision": 0.4460177309003912,
+    "recall": 0.4416911331320733,
+    "f1-score": 0.4351825526164016,
+    "support": 4698.0
+  },
+  "weighted avg": {
+    "precision": 0.5128234787524671,
+    "recall": 0.542571306939123,
+    "f1-score": 0.5241252857345216,
+    "support": 4698.0
+  },
+  "samples avg": {
+    "precision": 0.5499606946330309,
+    "recall": 0.5835667833916959,
+    "f1-score": 0.5243221538619237,
+    "support": 4698.0
+  }
+}

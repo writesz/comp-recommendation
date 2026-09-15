@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+
+# Local editor/tooling settings
+.claude/
+
+# SQLite DB with real user credentials (password hashes, sessions) — never publish
+cprs/data/*.db
+cprs/data/*.db-shm
+cprs/data/*.db-wal
+
+# Copyrighted University of London course materials (exam papers, templates, rubric)
+*.pdf
+rubric/
+preliminary_report_requirements.txt

@@ -1,0 +1,40 @@
+{
+  "best_global_threshold": 0.5,
+  "per_tag_thresholds": {
+    "math": 0.44999999999999996,
+    "greedy": 0.39999999999999997,
+    "dynamic_programming": 0.35,
+    "implementation": 0.44999999999999996,
+    "data_structures": 0.39999999999999997,
+    "brute_force": 0.35,
+    "sorting": 0.44999999999999996,
+    "strings": 0.5499999999999999,
+    "binary_search": 0.39999999999999997,
+    "two_pointers": 0.44999999999999996,
+    "dfs": 0.49999999999999994,
+    "number_theory": 0.5499999999999999,
+    "constructive": 0.44999999999999996,
+    "combinatorics": 0.35,
+    "game_theory": 0.5999999999999999,
+    "bitmask": 0.44999999999999996
+  },
+  "valid_tags": [
+    "math",
+    "greedy",
+    "dynamic_programming",
+    "implementation",
+    "data_structures",
+    "brute_force",
+    "sorting",
+    "strings",
+    "binary_search",
+    "two_pointers",
+    "dfs",
+    "number_theory",
+    "constructive",
+    "combinatorics",
+    "game_theory",
+    "bitmask"
+  ],
+  "recommendation": "Use global threshold 0.5 for displaying tags. Tags with confidence below this are hidden from users. For higher precision (fewer but more accurate tags), use 0.7+."
+}
