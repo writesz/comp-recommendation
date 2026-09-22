@@ -463,3 +463,56 @@ In a 1-week window that also produces the report + demo, committing to an RNN ri
 ### Deadline re-confirmed: ~1 week of working days (target ~2026-09-27)
 
 Plan tightened to 7 working days covering build + report + demo; cut order and "never cut" list recorded in `FINAL_PROJECT_PLAN.md`.
+
+---
+
+## 2026-09-22
+
+### Day 1 executed: cross-platform interaction dataset built
+
+Took the API-fetch route (plan Contingency A) over the CF Open Dataset download — self-sufficient, deterministic, reuses existing fetchers, and downloads/Kaggle-auth aren't reliable unattended. Sampled 3,000 rated CF handles (seed 42) via `user.ratedList`, fetched full submission histories, kept accepted solves for problems in the unified dataset. After k-core filtering (≥5 solves/user, ≥5 solvers/problem): **2,459 users × 7,568 problems, 532,059 interactions, 2.86% density** (high for implicit feedback — good CF signal). Leave-last-N temporal split (max 10 / 20% per user) → 512,436 train / 19,623 test solves across all users. Raw `cf_submissions.jsonl` committed (frozen for reproducible evaluation; CF histories drift). Scripts: `fetch_interactions.py`, `build_interactions.py`, `split_interactions.py`.
+
+### Day 2 executed: collaborative filtering + evaluation harness
+
+- `implicit` (ALS) installed cleanly (prebuilt arm64 wheel); SVD fallback wired in `models/collaborative.py` so the pipeline never hard-depends on a native build.
+- `models/content.py`: deterministic, vectorized offline content scorer (mirrors the deployed engine's topic-gap + difficulty-fit + popularity formula) — serves as a fair content-only baseline and the Day-3 hybrid ingredient.
+- `scripts/evaluate.py`: harness computing HitRate/Precision/Recall/MRR/nDCG @{5,10,20} over the held-out temporal test, masking already-solved train items.
+
+**Results (HitRate@10 / nDCG@10):**
+
+| Model | HitRate@10 | nDCG@10 |
+|---|---|---|
+| random | 0.011 | 0.001 |
+| content | 0.009 | 0.001 |
+| popularity | 0.144 | 0.037 |
+| **cf (ALS)** | **0.295** | **0.096** |
+
+**Key finding:** CF wins decisively — ~2× popularity, ~26× random. **Content-based performs at ~chance for next-solve prediction** — verified as a genuine effect, not a bug (content deliberately recommends *unseen* topics at *stretch* difficulty, which anti-correlates with users' tendency to continue in familiar topics). This is the core motivation for the hybrid: content optimizes pedagogical spread, CF optimizes next-action likelihood — they answer different questions. CF recommendations also lean slightly toward recent, popular problems (expected, since the temporal test holds out recent solves). Metrics saved to `data/eval_results.json`; significance testing deferred to Day 5.
+
+### Day 3 executed: hybrid model + cold-start — and a narrative-changing finding
+
+Built `models/hybrid.py` (per-user min-max normalized, density-weighted blend of CF with a content/popularity "cold" ingredient; `alpha = density/(density+k0)`), added `hybrid` + `hybrid_pop` to the harness, and sliced evaluation by user-activity bucket.
+
+**Finding 1 — on users with history, the hybrid cannot beat pure CF.** Overall nDCG@10: cf 0.096, hybrid_pop 0.090, hybrid(content) 0.081. Blending content *hurts* (it's at chance); blending popularity dilutes CF. This holds in **every** activity bucket, including low-activity [5,20) (cf 0.207 vs hybrid 0.143). Reason: the matrix is filtered to ≥5 solves, so it contains **no true cold-start users** — CF already has enough signal for everyone in it.
+
+**Finding 2 — the hybrid's value is real but *only* at genuine cold-start**, shown by a fold-in simulation (`scripts/coldstart_sim.py`, 1,976 probe users, reveal only k most-recent solves, ALS fold-in against fixed item factors). nDCG@10 vs history size k:
+
+| model | k=0 | k=1 | k=2 | k=3 | k=5 | k=10 | k=20 |
+|---|---|---|---|---|---|---|---|
+| cf | 0.001 | 0.135 | 0.132 | 0.124 | 0.114 | 0.091 | 0.071 |
+| popularity | 0.010 | 0.010 | 0.010 | 0.010 | 0.010 | 0.011 | 0.012 |
+| hybrid_pop (k0=10) | 0.010 | 0.014 | 0.019 | 0.026 | 0.038 | 0.065 | 0.069 |
+
+At **k=0** (brand-new user) CF collapses to ~random (0.001) and popularity wins 10×; from **k=1 onward CF fold-in dominates** (a single solve is enough to place a user usefully in latent space). Higher-history users have *lower* nDCG because they've exhausted popular problems and their next solves are rarer/harder.
+
+**Evidence-driven design conclusion:** the optimal cold-start policy is a **near-hard switch** — popularity for zero-history users, CF from the first interaction — not a slow smooth ramp. The k0=10 smooth blend is miscalibrated (under-weights CF at small k, where CF is already excellent). Recommended production model: **CF for any user with ≥1 solve; popularity fallback only at zero history.**
+
+**Reframing the "novel contribution":** the data does not support "hybrid beats everything." The defensible headline is **cross-platform CF + a rigorous evaluation that characterises exactly when each method works (incl. a validated cold-start policy)**. The remaining originality lever is the **cross-platform value analysis** (Day 6: does merging AtCoder/LeetCode history improve CF recommendations vs single-platform?), which is untouched and independent of this finding.
+
+### Decision: cross-platform value is the headline thrust (user choice, 2026-09-22)
+
+Asked which direction to prioritise; user chose **cross-platform value** over "strengthen the hybrid" or "evaluation rigor as star." This yields a **unifying thesis that connects Day 3 and Day 6**:
+
+> **Cross-platform history is a cold-start remedy.** Day 3 showed CF collapses for zero-history users. A user new to Codeforces but experienced on AtCoder/LeetCode is only "cold" if you look at one platform — merging their cross-platform profile makes them warm immediately. So the cross-platform contribution *is* the principled answer to the cold-start problem the evaluation exposed.
+
+The hybrid is reframed as the cold-start **mechanism** (personalized once ≥1 signal exists, on any platform); cross-platform data is what *supplies* that signal for users cold on the target platform. Next action: acquire a multi-platform cohort by handle-matching the 3,000 CF users against AtCoder (kenkoooo), then compare CF-only vs cross-platform recommendation quality.

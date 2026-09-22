@@ -8,3 +8,8 @@ lxml
 rich
 loguru
 tqdm
+numpy
+scipy
+pandas
+scikit-learn
+implicit
