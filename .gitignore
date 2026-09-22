@@ -4,6 +4,9 @@
 # Local editor/tooling settings
 .claude/
 
+# Derived interaction file — regenerable from cf_submissions.jsonl via build_interactions.py
+cprs/data/interactions/events_filtered.jsonl
+
 # SQLite DB with real user credentials (password hashes, sessions) — never publish
 cprs/data/*.db
 cprs/data/*.db-shm

@@ -1,0 +1,10 @@
+{
+  "holdout_n": 10,
+  "holdout_frac": 0.2,
+  "n_users": 2459,
+  "n_problems": 7568,
+  "train_interactions": 512436,
+  "test_interactions": 19623,
+  "users_with_test": 2459,
+  "avg_heldout_per_user": 7.98
+}

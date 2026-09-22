@@ -438,3 +438,28 @@ Where:
 Full day-by-day plan: `cprs/FINAL_PROJECT_PLAN.md`.
 
 ### Next action: exam preparation before build execution.
+
+---
+
+## 2026-09-19
+
+### Final rubric (v2) received + plan re-baselined against it
+
+**New artifact:** `final_report_rubric_v2.pdf` — the official per-criterion grading breakdown for the final report + video (far more specific than the preliminary rubric). Point weights make priorities explicit: Implementation quality (22), Design (12), and Diagrams (10) are the fattest buckets; the evaluation cluster (strategy 6 + coverage 5 + results 5 + analysis 4 = 20) and Originality (10) are almost entirely unclaimed until the eval harness exists. Full mapping table in `FINAL_PROJECT_PLAN.md`.
+
+### Q: Why do we actually need a user×problem interaction dataset? (raised during planning)
+
+**A:** It is the linchpin for ~40+ of the ~120 report points:
+1. **Collaborative filtering is a function of a user×problem matrix.** Content-only work is capped at "3rd (pass)" by the template rubric; a hybrid (CF + content) is the named "2:1" requirement. No matrix → no CF → no hybrid.
+2. **Offline evaluation is impossible without held-out real solves.** Every ranking metric (HitRate@K, nDCG, MRR, Precision/Recall@K) hides a user's recent solves and checks whether the model predicts them back. Without interaction histories there is nothing to score against → the ~20-point evaluation cluster stays at zero.
+3. It also lets us evaluate the *existing* content-based model properly (as a baseline) instead of anecdotally.
+
+**Decision:** interaction data is on the critical path, not optional. Source = **download CF Open Dataset (primary)**; contingency = API-fetch `user.status` for ~2–5K sampled handles using existing fetchers; sub-sample to keep the matrix tractable.
+
+### Decision: sequence/RNN model stays a cut-first stretch goal
+
+In a 1-week window that also produces the report + demo, committing to an RNN risks the critical path for marginal originality gain (originality is already banked by the curated cross-platform dataset + comparative cross-platform evaluation). Build only if Days 1–4 finish clean.
+
+### Deadline re-confirmed: ~1 week of working days (target ~2026-09-27)
+
+Plan tightened to 7 working days covering build + report + demo; cut order and "never cut" list recorded in `FINAL_PROJECT_PLAN.md`.

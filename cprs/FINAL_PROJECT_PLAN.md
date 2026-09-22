@@ -1,75 +1,128 @@
-# CPRS — Final Project Build Plan (~1 Week)
+# CPRS — Final Project Build Plan (v2, rubric-mapped)
 
-> Goal: take the prototype to a **1st-class** final submission (Template 1.1, Data Science)
-> in ~7 days of everyday work, **offline evaluation only**.
-> Written 2026-09-14. Execution starts **after exam prep**.
+> Goal: take the working prototype to a **1st-class** final submission
+> (Template 1.1, Data Science) in **~1 week** of working days, **offline evaluation only**.
+> Revised 2026-09-19 against `final_report_rubric_v2.pdf`. Target submission ~2026-09-27.
+> Supersedes the v1 plan; day structure tightened to fit build + report + demo in one week.
 
 ## Decisions locked
 
 - **Ambition:** aim for 1st from the start.
-- **Evaluation data:** offline-only, on real interaction data (no user study).
-- **First technical thrust:** **Hybrid = collaborative filtering + existing content-based** (chosen for highest grade-per-effort; it moves 3rd→2:1 and forces a real cold-start story).
-- **Novelty framing (the 1st-class "novel approach"):** cross-platform hybrid recommendation + rigorous comparative evaluation on a *curated cross-platform dataset*. The curated dataset already satisfies a 1st-class criterion. A sequence/RNN model is a **stretch goal only**, not on the critical path.
+- **Deadline:** ~1 week of working days (revised 2026-09-19).
+- **Evaluation data:** offline-only on real interaction data (no user study).
+- **Interaction data source:** **CF Open Dataset (download) as primary**, API-fetch of ~2–5K
+  sampled CF handles as contingency, sub-sample to keep the matrix tractable. *Why we need it:*
+  collaborative filtering is a function of a user×problem matrix, and every offline ranking
+  metric requires held-out real solves — it is the linchpin for Implementation, the whole
+  Evaluation cluster, and Originality (~40+ report points).
+- **First technical thrust:** **Hybrid = collaborative filtering + existing content-based**
+  (moves 3rd→2:1, forces a real cold-start story).
+- **Novelty framing (the 1st-class "novel approach"):** cross-platform hybrid recommendation
+  + rigorous comparative evaluation on a *curated cross-platform dataset*.
+- **Sequence/RNN model:** **cut-first stretch goal only.** Build only if Days 1–4 finish clean.
 
-## How this maps to the 1st-class rubric
+## What already exists (do not rebuild)
 
-| 1st-class criterion | Delivered by |
-|---|---|
-| Novel approach / adaptation of SOTA | Cross-platform hybrid (CF + content) with density-weighted blending + cold-start switching |
-| Creation/curation of high-quality dataset | ✅ already done (24,335 problems, unified difficulty + tags) |
-| Comprehensive eval w/ baselines + statistical significance | Phase B: 5 baselines, paired significance tests, cross-validation |
-| Detailed analysis of performance and insights | Phase B/C: ablations, difficulty calibration, cross-platform value analysis |
+- ✅ Curated unified dataset — 24,335 problems (CF/AtCoder/LeetCode), normalised difficulty +
+  unified tag taxonomy. (Banks a 1st-class dataset criterion + much of Originality.)
+- ✅ NLP auto-tagger for AtCoder — TF-IDF + OneVsRest LogReg, 5-fold CV, threshold calibration.
+- ✅ Content-based recommender + multi-platform user profiles (CF/AtCoder/LeetCode APIs).
+- ✅ FastAPI + SQLite web app (auth, profiles, recent-performance, recommendation cards).
+- ✅ Preliminary report (`.md`/`.tex`), decisions log.
 
-## Hard constraints & top risks
+## The gap to a 1st (all unbuilt — this is the week's work)
 
-1. **No interaction dataset on disk yet.** `data/raw/` has problem catalogues only. Collaborative filtering needs a user×problem matrix. **This is the #1 risk.** → Day 1 resolves it (see below), with contingency.
-2. **One week must cover build + final report + demo video.** This is aggressive. If time slips, cut in this order: RNN stretch goal → embedding tagger → extra baselines. Never cut: hybrid model, core metrics, significance testing, visualisations.
-3. Exam prep runs first and will eat calendar time — the 7 "build days" are working days, not consecutive.
+- ❌ No user×problem interaction dataset on disk.
+- ❌ No collaborative filtering, hybrid, or cold-start implementation.
+- ❌ No evaluation harness, baselines, significance tests, or figures.
+- ❌ No design/architecture diagrams (Diagrams = 10 pts, near-zero right now).
+- ❌ Report Results/Discussion chapters; ACM citation pass; ToC.
 
-## Day-by-day
+## Rubric coverage map (final_report_rubric_v2.pdf)
 
-### Day 1 — Acquire interaction data + build matrix  *(highest risk)*
-- Obtain the CF Open Dataset (17.6M submissions / ~15K users). **Primary:** download the published dataset. **Contingency A:** if unavailable/too large, fetch submissions for a sampled set of ~2–5K CF handles via the CF API (`user.status`) — slower but self-sufficient. **Contingency B:** sub-sample users to keep the matrix tractable.
+| Rubric criterion | Max | Status now | Delivered by |
+|---|---:|---|---|
+| Clearly written | 10 | partial | Report pass (Day 6–7) |
+| Diagrams appropriate & clear | 10 | ❌ ~zero | Design + eval figures (Day 4–5) |
+| Knowledge of area / lit | 10 | ✅ strong | Existing lit review |
+| Critically evaluate prior work | 6 | weak (TA-flagged) | Gap→contribution table (Day 5) |
+| Proper ACM citation | 4 | ❌ | Citation pass (Day 6) |
+| Design clear & high quality | 12 | weak | Design chapter + diagrams + cold-start (Day 3,5) |
+| Concept justified by domain/users | 8 | ✅ mostly | Existing + tighten (Day 5) |
+| Implementation high quality | 22 | partial (content-only) | Hybrid + eval end-to-end (Day 1–4) |
+| Implementation technically challenging | 8 | partial | CF + hybrid + cross-platform (Day 2–3) |
+| Eval strategy appropriate | 6 | ❌ | Harness design (Day 2) |
+| Eval coverage | 5 | ❌ | 5 models × ≥4 metrics + CV (Day 2–4) |
+| Eval results presented well | 5 | ❌ | Figures + tables (Day 4) |
+| Eval → critical analysis vs objectives | 4 | ❌ | Discussion chapter (Day 6) |
+| Originality | 10 | ✅ mostly | Cross-platform hybrid + comparative eval (Day 3–4) |
+| Video: final product + technical | 10 | ❌ | Demo MP4 (Day 7) |
+
+## Day-by-day (working days)
+
+### Day 1 — Interaction data + evaluation split  *(highest risk, linchpin)*
+- Acquire CF Open Dataset (primary) / API-fetch ~2–5K sampled handles (contingency B: sub-sample).
 - Build sparse user×problem implicit-feedback matrix (solved = 1).
 - Time-based split: hold out each user's most-recent-N solves as test.
-- **Deliverable:** `interaction_matrix.npz` + train/test split script.
+- **Deliverables:** `scripts/build_interactions.py`, `scripts/split_interactions.py`,
+  `data/interactions/matrix.npz` + train/test split.
+- **Feeds:** Implementation(22), all Evaluation(20), Originality(10).
 
-### Day 2 — Collaborative filtering model
-- Matrix factorisation on implicit feedback (ALS via `implicit`, or SVD). Train, generate top-N.
-- Sanity-check recommendations for known users.
-- **Deliverable:** `models/collaborative.py` producing ranked lists.
+### Day 2 — Collaborative filtering + evaluation harness
+- Matrix factorisation on implicit feedback (ALS via `implicit`, or SVD); generate top-N.
+- Evaluation harness: HitRate@K, MRR, nDCG@K, Precision/Recall@K.
+- Baselines wired in: random, popularity, content-only, CF-only.
+- **Deliverables:** `models/collaborative.py`, `scripts/evaluate.py`, first metrics table.
+- **Feeds:** Implementation, Eval strategy(6) + coverage(5), Technical challenge(8).
 
 ### Day 3 — Hybrid model + cold-start
-- Blend CF score with the existing content-based score; blend weight α = f(user interaction density). Sparse/new users → content-only (**cold-start**); dense users → CF-weighted.
-- **Deliverable:** `models/hybrid.py`; documented cold-start behaviour (answers the design gap for real).
+- Blend CF + content score; blend weight α = f(user interaction density).
+  Sparse/new users → content-only (**cold-start**); dense users → CF-weighted.
+- Add hybrid to the harness; k-fold cross-validation over users.
+- **Deliverables:** `models/hybrid.py`, documented cold-start behaviour.
+- **Feeds:** Implementation(22), Technical challenge(8), Design(12, the TA-requested cold-start).
 
-### Day 4 — Evaluation harness
-- Metrics: HitRate@K, MRR, nDCG@K, Precision/Recall@K + domain metrics (difficulty calibration, topic coverage).
-- Baselines: random, popularity, content-only, CF-only, hybrid.
-- k-fold cross-validation over users.
-- **Deliverable:** `scripts/evaluate.py` → metrics table across all models.
+### Day 4 — Significance + figures + cross-platform value
+- Paired significance tests (Wilcoxon / paired t) on per-user metrics between models + effect sizes.
+- Figures: metric-vs-K curves, PR curves, model-comparison bars, difficulty-calibration plot,
+  topic-coverage plot, **single-platform vs merged cross-platform** profiles (the novel angle).
+- **Deliverables:** `data/eval_results.json`, `figures/*.png`.
+- **Feeds:** Eval results(5), critical analysis(4), Diagrams(10), Originality(10).
 
-### Day 5 — Statistical significance + visualisation
-- Paired significance tests (Wilcoxon / paired t-test) on per-user metric distributions between models; report effect sizes.
-- Figures: metric-vs-K curves, PR curves, model-comparison bars, difficulty-calibration plot, coverage plot (matplotlib/seaborn).
-- **Deliverable:** `data/eval_results.json` + `figures/*.png`.
+### Day 5 — Design diagrams + report core chapters
+- Diagrams: system architecture, data pipeline, model/hybrid diagram, ER diagram.
+- Write/refresh: Design chapter (diagrams + cold-start), Implementation chapter,
+  gap→contribution table in Lit Review, Table of Contents.
+- **Deliverables:** `figures/design/*`, report Design + Implementation sections.
+- **Feeds:** Design(12), Diagrams(10), Lit critical eval(6).
 
-### Day 6 — Cross-platform value analysis + iteration buffer
-- Quantify the core thesis: single-platform vs merged cross-platform profiles, with significance. This is the novel evaluation angle.
-- Buffer for whatever broke on Days 1–5. Optional stretch: per-tag tagger thresholds.
-- **Deliverable:** cross-platform value result + figure.
+### Day 6 — Results/Discussion + citations
+- Results chapter (tables + figures woven in); Discussion critically analysing results
+  vs the project's stated objectives (balanced good/bad, evidence-driven).
+- ACM citation pass — every source cited, correct ACM style (4 pts all-or-nothing).
+- **Deliverables:** report Results + Discussion, `references.bib` in ACM style.
+- **Feeds:** Results(5), critical analysis(4), Citations(4), Written(10).
 
-### Day 7 — Final report integration + demo + cleanup
-- Fold results into final report: Results/Discussion chapters with figures; add cold-start to Design; add gap→contribution table to Lit Review; ToC; citation-consistency pass.
-- Record 3–5 min demo video (MP4).
-- Code cleanup + README.
-- **Deliverable:** final report draft, demo video, clean repo.
+### Day 7 — Demo video + cleanup + buffer
+- Record 3–5 min MP4 demo (web app walkthrough + evaluation highlights).
+- README, code cleanup, final proofread, export report PDF.
+- Buffer for whatever slipped on Days 1–6.
+- **Deliverables:** `demo.mp4`, `README.md`, final report PDF, clean repo.
+- **Feeds:** Video(/10), Written presentation(10).
+
+## Cut order if time slips
+RNN stretch (already cut) → extra baselines → cross-platform *significance* (keep descriptive)
+→ figure polish. **Never cut:** hybrid model, core ranking metrics, ≥1 significance test,
+design diagrams, demo video.
 
 ## Definition of done (1st-class bar)
+- [ ] Interaction matrix built + time-based train/test split
 - [ ] Hybrid recommender working end-to-end
 - [ ] ≥5 models compared on ≥4 metrics with cross-validation
 - [ ] Statistical significance reported with effect sizes
 - [ ] All results visualised, not just tabulated
 - [ ] Cold-start handled in design + code
 - [ ] Cross-platform value quantified
-- [ ] Final report + MP4 demo + clean code
+- [ ] Design + architecture diagrams in report
+- [ ] ACM citation pass complete
+- [ ] Final report PDF + MP4 demo + clean repo with README
