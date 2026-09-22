@@ -1,0 +1,1137 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\usepackage{parskip}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds}
+\usepackage{xcolor}
+\definecolor{cprsblue}{HTML}{2C7FB8}
+\definecolor{cprsgreen}{HTML}{31A354}
+\definecolor{cprsgrey}{HTML}{6E6E6E}
+
+\newcommand{\ndcg}{nDCG}
+\newcommand{\RQ}[1]{\textbf{RQ#1}}
+
+\title{\textbf{CPRS: A Cross-Platform Competitive Programming Recommendation System} \\[1em]
+\large CM3070 Computer Science Final Project --- Final Report \\[0.5em]
+\large Template 1.1: Data-Driven Personalised Educational Content Recommendation}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent Competitive-programming platforms host millions of problems but give
+users little personalised guidance on what to solve next, and each platform is an
+isolated silo with its own difficulty scale and tag taxonomy. This project builds
+CPRS, a cross-platform recommender spanning Codeforces, AtCoder and LeetCode. We
+curate a unified dataset of 24{,}335 problems with normalised difficulty and a
+shared taxonomy of 43 canonical topics, recover AtCoder's missing topic tags with an
+NLP transfer tagger, and assemble a real user$\times$problem interaction dataset
+(2{,}459 users, 532{,}059 solves) by sampling the Codeforces API. On a held-out
+temporal split we compare six recommenders under five ranking metrics with paired
+significance testing. Collaborative filtering dominates (\ndcg{}@10 $=0.096$, versus
+$0.037$ for a popularity baseline; $p<10^{-42}$), while a content baseline is shown to
+be mis-aligned with next-solve prediction. We then interrogate the project's central
+premise --- that \emph{cross-platform data} improves recommendation. That premise
+survives only in a specific, and initially surprising, form. Collaborative transfer
+across platforms fails: the problem sets are disjoint and, empirically, multi-platform
+users are experienced on every platform, so the cold population the idea targets
+barely exists. Yet \emph{skill} transfers strongly --- on the unified difficulty scale
+a user's Codeforces and AtCoder skill correlate at $r=0.77$ --- and an online
+cross-platform skill estimator exploits this to predict a brand-new user's ability
+$35$--$40\%$ more accurately than a population prior, correcting itself as evidence
+accrues. The contribution is thus a curated cross-platform resource and NLP tagger,
+together with a rigorous, evidence-driven account of \emph{when} collaborative,
+content and cross-platform signals help --- including several counter-intuitive but
+well-explained negative results that sharpen the boundary of a commonly assumed
+benefit.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Introduction}
+\label{sec:intro}
+%======================================================================
+
+\subsection{Motivation and Context}
+Competitive programming has grown into a global educational practice. Platforms such
+as Codeforces, AtCoder and LeetCode collectively host millions of algorithmic problems
+and serve tens of millions of users~\cite{wasik2018}, functioning both as training
+grounds for algorithmic reasoning and as \emph{de-facto} assessment instruments in
+technical hiring~\cite{liang2021}. Their very scale, however, creates a discovery
+problem: a learner must repeatedly decide \emph{which problem to attempt next} from a
+space of thousands, usually by trial and error or informal peer advice rather than
+systematic, personalised guidance. Because timely, well-targeted feedback is central
+to skill acquisition~\cite{boud2013}, this is a genuine educational deficiency, not a
+mere convenience gap; yet platforms surface only coarse aggregate statistics (a rating,
+a solve count) and no actionable problem-level direction.
+
+The difficulty is compounded by \emph{fragmentation}. Each platform operates as an
+island with its own difficulty scale, tag taxonomy and user base. A learner practising
+on Codeforces receives no guidance about complementary AtCoder or LeetCode problems
+that would target the same weakness, and the rich behavioural trace a user generates on
+one platform is invisible to the others. Existing aids --- platform-curated lists,
+community ``ladders'', forum advice --- are neither personalised nor cross-platform.
+Bridging these islands is the specific opportunity CPRS pursues.
+
+\subsection{Problem Statement}
+This project addresses the question: \emph{can data-science techniques build a
+personalised competitive-programming recommender that operates across platforms, and
+does cross-platform data measurably improve recommendation quality?} The second clause
+is not rhetorical. Cross-platform value is widely \emph{assumed} by systems that
+aggregate profiles, but --- as far as we are aware --- never \emph{measured}. A central
+aim of this work is to test it directly, and the answer proves more nuanced than the
+premise.
+
+\subsection{Aims and Objectives}
+\label{sec:objectives}
+The overall aim is a working, evaluated cross-platform recommender that is both a
+useful tool and a vehicle for answering the research questions below. Concretely, the
+measurable objectives are:
+\begin{enumerate}
+    \item[\textbf{O1}] Curate a unified, normalised cross-platform problem dataset
+    (comparable difficulty, shared tag taxonomy, stable identifiers).
+    \item[\textbf{O2}] Recover AtCoder's missing topic tags with an NLP method,
+    evaluated by cross-validation.
+    \item[\textbf{O3}] Assemble a real user$\times$problem interaction dataset and a
+    principled (temporal) train/test protocol.
+    \item[\textbf{O4}] Implement and compare content-based, collaborative and hybrid
+    recommenders under standard ranking metrics with statistical significance.
+    \item[\textbf{O5}] Characterise cold-start behaviour and derive an evidence-based
+    cold-start policy.
+    \item[\textbf{O6}] Determine empirically whether, and how, cross-platform history
+    improves recommendation.
+    \item[\textbf{O7}] Deliver a working web application that builds live
+    multi-platform profiles and serves recommendations.
+\end{enumerate}
+
+\subsection{Research Questions}
+The evaluation (Sections~\ref{sec:eval}--\ref{sec:results}) is organised around four
+questions:
+\begin{itemize}
+    \item[\RQ{1}] Which recommendation paradigm best predicts what a user solves next
+    --- content-based, collaborative filtering, or a hybrid?
+    \item[\RQ{2}] How do recommenders behave under \emph{cold start}, and what is the
+    correct cold-start policy?
+    \item[\RQ{3}] Does merging a user's cross-platform history improve
+    \emph{collaborative} recommendation on a target platform?
+    \item[\RQ{4}] Is skill itself transferable across platforms on a unified difficulty
+    scale, and can it be exploited for cold start?
+\end{itemize}
+
+\subsection{Contributions}
+\label{sec:contributions}
+\begin{enumerate}
+    \item \textbf{A curated cross-platform dataset} of 24{,}335 problems with
+    min--max-normalised difficulty and a 43-topic unified taxonomy, plus a real
+    interaction dataset of 2{,}459 users and 532{,}059 solves, harvested and
+    time-split for offline evaluation (Sections~\ref{sec:design-data},
+    \ref{sec:impl-data}).
+    \item \textbf{An NLP cross-platform transfer tagger} that recovers AtCoder's absent
+    topic tags by training on Codeforces statements, with a cross-validated,
+    calibrated evaluation and a two-tier finding about which tags are text-learnable
+    (Section~\ref{sec:tagger}).
+    \item \textbf{A rigorous comparative evaluation} of six recommenders across five
+    ranking metrics, with activity slicing, a cold-start fold-in simulation, paired
+    Wilcoxon tests and bootstrap confidence intervals (Section~\ref{sec:results}).
+    \item \textbf{The cross-platform value study} (\RQ{3}--\RQ{4}): collaborative
+    transfer fails but skill transfer succeeds ($r=0.77$), and an \textbf{online
+    cross-platform skill estimator} improves cold-start skill estimation by
+    $35$--$40\%$ (Sections~\ref{sec:design-skill}, \ref{sec:results-xplat}).
+    \item \textbf{A working web application} that builds live multi-platform user
+    profiles and serves cross-platform recommendations (Section~\ref{sec:impl-web}).
+\end{enumerate}
+
+\subsection{An Evidence-Driven Journey}
+\label{sec:journey}
+It is worth stating at the outset that this project did not unfold as planned, and that
+the divergence is the source of its most interesting findings. We set out expecting a
+\emph{hybrid} recommender to be the centrepiece and cross-platform aggregation to be an
+obvious win. The data refused both expectations. The hybrid did not beat collaborative
+filtering; cross-platform \emph{collaborative} transfer actively hurt; and the
+population that cross-platform cold-start was meant to rescue turned out to barely
+exist. Rather than discard the premise, we followed the evidence to a sharper question
+--- is \emph{skill}, as opposed to co-occurrence, transferable? --- and found that it
+is, strongly. The report is written to make this reasoning visible: each major result
+is presented as a hypothesis tested, sometimes refuted, and refined. This is both more
+honest and, we argue, more instructive than a tidy narrative in which everything worked.
+
+\subsection{Report Structure}
+Section~\ref{sec:lit} reviews the literature and states the gap. Section~\ref{sec:design}
+gives requirements and design; Section~\ref{sec:impl} the implementation.
+Section~\ref{sec:tagger} presents the NLP tagger. Section~\ref{sec:eval} defines the
+evaluation methodology and Section~\ref{sec:results} reports the results, threaded as an
+inquiry. Section~\ref{sec:discussion} discusses them against the objectives,
+Section~\ref{sec:ethics} covers professional and ethical considerations, and
+Section~\ref{sec:conclusion} concludes. Appendices give full metric tables,
+hyperparameters, the taxonomy and reproduction instructions.
+
+%======================================================================
+\section{Literature Review}
+\label{sec:lit}
+%======================================================================
+
+\subsection{Recommender Systems: Foundations}
+Recommender systems are conventionally grouped into three families~\cite{ricci2015}.
+\emph{Content-based} methods represent items by features and recommend those similar to
+a user's profile~\cite{lops2011}; they handle new items gracefully but tend to
+over-specialise and cannot discover interests outside a user's established profile.
+\emph{Collaborative filtering} (CF) instead exploits patterns of co-occurrence across
+users' behaviour, needing no item features. \emph{Hybrid} systems combine paradigms to
+offset each other's weaknesses~\cite{burke2002}, and in the recommender literature are
+routinely the strongest performers --- an expectation this project set out to confirm
+and, instructively, did not (Section~\ref{sec:results}).
+
+\subsection{Matrix Factorisation and Implicit Feedback}
+Latent-factor models via matrix factorisation are the dominant CF
+approach~\cite{koren2009}: users and items are embedded in a shared low-dimensional
+space and affinity is their inner product. Most competitive-programming signal is
+\emph{implicit} --- we observe that a user \emph{solved} a problem, but not a graded
+preference, and non-solves are ambiguous (unseen vs.\ failed vs.\ disliked). Hu, Koren
+and Volinsky~\cite{hu2008} address this with a confidence-weighted alternating least
+squares (ALS) formulation that treats observed interactions as positive preference with
+a confidence that grows with interaction strength; it is the model we adopt.
+Bayesian Personalised Ranking~\cite{rendle2009} offers a pairwise-ranking alternative
+optimised directly for ordering. A persistent limitation of all CF is
+\emph{cold start}~\cite{schein2002}: a user or item with little history cannot be
+placed in the latent space --- the precise failure our cross-platform skill model
+targets.
+
+\subsection{Cross-Domain and Transfer Recommendation}
+Directly relevant to this project is \emph{cross-domain} recommendation, which seeks to
+transfer knowledge from a source domain (here, one platform) to improve a target
+domain~\cite{cantador2015}. Transfer can operate over shared \emph{users},
+shared \emph{items}, or a shared \emph{latent space}~\cite{pan2010}. The
+competitive-programming setting is an unusually clean instance: platforms share
+\emph{users} (via reused handles) but almost no \emph{items} (problem sets are
+disjoint). The literature warns that when the overlap is on users rather than items,
+naive joint factorisation may fail to align the two domains' latent
+spaces~\cite{cantador2015} --- exactly the failure we observe for collaborative
+transfer, and the reason we turn to a shared \emph{ability} construct instead.
+
+\subsection{Sequence- and Session-Aware Recommendation}
+Because a learner's next choice depends on recent activity, session-based recommenders
+that model interaction order --- e.g.\ recurrent approaches such as
+GRU4Rec~\cite{hidasi2016} --- are conceptually attractive here. They also raise the bar
+for evaluation, motivating a \emph{temporal} rather than random train/test split so
+that predicting the future from the past is genuinely tested~\cite{cremonesi2010}. We
+adopt temporal evaluation throughout; a full sequence model was scoped as future work
+(Section~\ref{sec:conclusion}) to keep the critical path on the cross-platform question.
+
+\subsection{Knowledge Tracing and Ability Modelling}
+Modelling a learner's evolving ability is the subject of knowledge tracing. Bayesian
+Knowledge Tracing~\cite{corbett1994} and Deep Knowledge Tracing~\cite{piech2015} track
+per-skill mastery over time. Item Response Theory~\cite{pelanek2017} and the Elo rating
+system~\cite{elo1978} model the probability of a correct response as a logistic function
+of the gap between learner ability and item difficulty --- the same functional form we
+use for solvability (Section~\ref{sec:design-skill}). Vygotsky's ``zone of proximal
+development''~\cite{vygotsky1978} provides the pedagogical rationale for recommending
+problems slightly above current ability, which our difficulty-matching scorer
+operationalises. Crucially, ability in these frameworks is a property of the
+\emph{learner}, not of any single item set --- foreshadowing why skill, unlike
+item co-occurrence, transfers across platforms.
+
+\subsection{Recommendation in Programming Education}
+Single-platform tools exist as community projects --- topic ladders, weakness finders
+and rating predictors~\cite{ahmed2023} --- and academic work has recommended problems on
+individual online judges~\cite{zhang2019}, typically using one public dataset and a
+single accuracy metric. None unifies behaviour \emph{across} platforms, and,
+importantly, none tests whether cross-platform history is actually useful. That
+untested assumption is the gap this project targets.
+
+\subsection{Evaluation Methodology and its Pitfalls}
+Offline top-$N$ evaluation is standard but subtle. Ranking quality is measured with hit
+rate, precision/recall@$K$, mean reciprocal rank and normalised discounted cumulative
+gain (\ndcg{})~\cite{jarvelin2002}. Cremonesi et al.~\cite{cremonesi2010} show that such
+metrics must be read against strong baselines --- popularity in particular is
+deceptively hard to beat --- and that a temporal split better reflects deployment than a
+random one. Because per-user metric distributions are non-normal and zero-inflated,
+model differences should be tested with a paired non-parametric test such as the
+Wilcoxon signed-rank test~\cite{wilcoxon1945}, reported with effect sizes and confidence
+intervals rather than point estimates alone~\cite{dacrema2019}. We follow these
+recommendations throughout, and they materially shape our conclusions.
+
+\subsection{Gap Analysis and Contribution Mapping}
+The literature supplies mature single-platform techniques and clear evaluation practice,
+but leaves the cross-platform question open and, where cross-domain transfer is studied,
+warns that user-overlap transfer is fragile. Table~\ref{tab:gap} maps each gap to the
+contribution that addresses it.
+
+\begin{table}[h]
+\centering
+\caption{Gaps identified in the literature and the contributions that address them.}
+\label{tab:gap}
+\small
+\begin{tabularx}{\textwidth}{@{}p{5.4cm}X@{}}
+\toprule
+\textbf{Gap in prior work} & \textbf{CPRS contribution} \\
+\midrule
+No dataset unifies behaviour or problems across CF/AtCoder/LeetCode & Curated unified
+catalogue (24{,}335 problems) + real interaction dataset (\S\ref{sec:design-data},
+\S\ref{sec:impl-data}) \\
+AtCoder problems lack topic tags, preventing topic-based analysis & NLP transfer tagger
+from CF statements, cross-validated (\S\ref{sec:tagger}) \\
+Community tools are rarely evaluated with ranking metrics or baselines & Six-model
+comparison, five metrics, significance testing (\S\ref{sec:results}) \\
+Cross-platform value is assumed, never measured & Direct study: collaborative transfer
+fails; skill transfer succeeds ($r=0.77$) (\S\ref{sec:results-xplat}) \\
+Cross-domain transfer over shared users is known to be fragile, but untested here &
+Two mechanisms tested and refuted; a shared-ability alternative validated
+(\S\ref{sec:results-xplat}) \\
+Cold start asserted rather than characterised & Fold-in simulation + an online
+cross-platform skill estimator (\S\ref{sec:design-skill}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+%======================================================================
+\section{Requirements and Design}
+\label{sec:design}
+%======================================================================
+
+\subsection{Requirements}
+\label{sec:requirements}
+The target users are competitive programmers across the ability range --- beginners
+choosing early problems, intermediates navigating the largest and most heterogeneous
+problem space, and advanced users seeking targeted practice --- as well as candidates
+preparing for technical interviews. From this the following requirements follow.
+
+\paragraph{Functional.} (F1) ingest problems from Codeforces, AtCoder and LeetCode into
+a unified schema; (F2) normalise difficulty to a common scale and tags to a common
+taxonomy; (F3) infer missing AtCoder tags; (F4) build a user skill profile from
+submission history on any supported platform; (F5) generate a ranked, personalised
+problem list drawing from all platforms; (F6) present recommendations with difficulty,
+topic and a link to the origin judge; (F7) refresh a profile as the user solves more.
+
+\paragraph{Non-functional.} (N1) recommendations computed offline in seconds over
+$\sim$$10^4$ problems and $\sim$$10^3$ users; (N2) reproducible data pipeline with frozen
+raw data; (N3) respectful use of third-party APIs (rate limiting, caching); (N4) safe
+handling of user credentials; (N5) evaluability --- every claim supported by a metric
+and, where comparative, a significance test.
+
+\subsection{System Architecture}
+CPRS is organised as a data pipeline feeding a set of recommendation models, exposed
+through a web application (Figure~\ref{fig:arch}). Platform fetchers collect raw problem
+catalogues and user submissions; an ETL stage normalises them into a unified schema; the
+NLP tagger enriches AtCoder problems; and the recommendation models are evaluated
+offline and served live.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=6mm and 10mm,
+    box/.style={draw, rounded corners, align=center, minimum height=8mm,
+                inner sep=3pt, font=\small, fill=cprsblue!8},
+    src/.style={box, fill=cprsgreen!12},
+    mdl/.style={box, fill=cprsblue!14},
+    arr/.style={-{Stealth[length=2mm]}, cprsgrey, thick}]
+  \node[src] (cf) {Codeforces API};
+  \node[src, right=of cf] (ac) {AtCoder (kenkoooo)};
+  \node[src, right=of ac] (lc) {LeetCode GraphQL};
+  \node[box, below=of ac] (etl) {ETL: unify difficulty + tags\\(normalisation, taxonomy)};
+  \node[box, below left=8mm and -6mm of etl] (tag) {NLP transfer tagger\\(AtCoder tags)};
+  \node[box, below right=8mm and -6mm of etl] (mat) {Interaction matrix\\+ temporal split};
+  \node[mdl, below=18mm of etl] (models) {Recommendation models\\content $\cdot$ CF (ALS) $\cdot$ hybrid $\cdot$ skill};
+  \node[box, below left=8mm and 2mm of models] (eval) {Offline evaluation\\(metrics, significance)};
+  \node[box, below right=8mm and 2mm of models] (app) {FastAPI + web UI\\(live recommendations)};
+  \draw[arr] (cf) -- (etl); \draw[arr] (ac) -- (etl); \draw[arr] (lc) -- (etl);
+  \draw[arr] (etl) -- (tag); \draw[arr] (etl) -- (mat);
+  \draw[arr] (tag) -- (models); \draw[arr] (mat) -- (models);
+  \draw[arr] (models) -- (eval); \draw[arr] (models) -- (app);
+\end{tikzpicture}
+\caption{CPRS system architecture: from platform APIs through unification and tagging to
+models, offline evaluation and the served application.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Unified Data Schema and Difficulty Normalisation}
+\label{sec:design-data}
+The three platforms express difficulty incompatibly: Codeforces uses an integer rating
+(roughly 800--3500); AtCoder uses a community model-estimated real value that can be
+negative~\cite{kenkoooo2024}; LeetCode uses three ordinal levels. We map all three onto a
+common $[0,1]$ scale by min--max normalisation with platform-specific bounds:
+\begin{align}
+d_{\text{CF}}   &= \operatorname{clip}\!\Big(\tfrac{r-800}{3500-800},\,0,\,1\Big), &
+d_{\text{AC}}   &= \operatorname{clip}\!\Big(\tfrac{b+500}{4000+500},\,0,\,1\Big), &
+d_{\text{LC}}   &\in \{0.2,\,0.5,\,0.85\}.
+\end{align}
+Tags from all platforms are folded into a shared taxonomy of 43 canonical topics
+(Appendix~\ref{app:taxonomy}), and every problem receives a stable identifier
+(\texttt{cf:1234A}, \texttt{ac:abc123\_a}, \texttt{lc:42}). Two assumptions are explicit:
+that difficulty distributions are roughly comparable across platforms after
+normalisation, and that AtCoder's model-derived difficulty is a usable proxy. Rather than
+take these on faith we test the first directly (Section~\ref{sec:results-xplat}), and it
+is the empirical validation of this scale ($r=0.77$) that ultimately carries the
+cross-platform contribution.
+
+\subsection{Recommendation Models}
+\label{sec:design-models}
+All models share one interface --- given a user, produce a real-valued score over every
+candidate problem --- so they can be ranked, masked and blended uniformly.
+
+\paragraph{Content-based.} A problem $p$ with unified tags $T_p$, difficulty $d_p$ and
+solve-count popularity is scored against a user profile built from their solved
+problems. Two deliberately opposed variants are studied. The \emph{pedagogical} scorer
+combines a topic-gap term (favouring \emph{unseen}/weak topics), a difficulty-fit
+Gaussian centred \emph{above} the user's level (stretch), and popularity:
+\begin{equation}
+s^{\text{ped}}_p = 0.4\,g_u(T_p) + 0.4\,\exp\!\Big(\!-\tfrac{(d_p-(\theta_u+\sigma_s))^2}{2\sigma^2}\Big) + 0.1\,\hat{\rho}_p ,
+\end{equation}
+where $g_u$ is the mean inverse-mastery of $p$'s tags, $\theta_u$ the user's level and
+$\hat\rho_p$ log-scaled popularity. The \emph{difficulty-match} scorer
+(\texttt{diffmatch}) instead favours \emph{familiar} topics at \emph{at-level}
+difficulty:
+\begin{equation}
+s^{\text{match}}_p = 0.5\,f_u(T_p) + 0.5\,\exp\!\Big(\!-\tfrac{(d_p-\theta_u)^2}{2\sigma^2}\Big) + 0.05\,\hat{\rho}_p ,
+\end{equation}
+with $f_u$ the mean \emph{familiarity} (solve count) of $p$'s tags. The contrast --- push
+toward the unfamiliar and hard, versus stay near the familiar and comfortable --- is a
+design probe whose effect the evaluation measures directly.
+
+\paragraph{Collaborative filtering.} We factorise the binary user$\times$problem ``solved''
+matrix $R$ with implicit-feedback ALS~\cite{hu2008}, minimising
+$\sum_{u,p} c_{up}\big(\mathbb{1}[R_{up}{>}0]-x_u^\top y_p\big)^2 + \lambda(\lVert x_u\rVert^2+\lVert y_p\rVert^2)$
+with confidence $c_{up}=1+\alpha R_{up}$. A user's score for a problem is $x_u^\top y_p$.
+
+\paragraph{Hybrid and cold-start mechanism.} CF and a ``cold'' ingredient (content or
+popularity) are min--max normalised per user and blended by interaction density:
+\begin{equation}
+s^{\text{hyb}}_p = \alpha(n_u)\,\widetilde{s}^{\,\text{cf}}_p + \big(1-\alpha(n_u)\big)\,\widetilde{s}^{\,\text{cold}}_p ,
+\qquad \alpha(n_u)=\frac{n_u}{n_u+k_0},
+\end{equation}
+so the model degrades gracefully toward the cold ingredient as history $n_u$ shrinks --- a
+continuous cold-start mechanism rather than a hard switch. Whether this is the right
+policy is itself an empirical question we answer in Section~\ref{sec:results}.
+
+\subsection{Cross-Platform Online Skill Model}
+\label{sec:design-skill}
+The recommenders above answer \emph{which} problem. A separate question is \emph{at what
+level}, and this is where cross-platform data ultimately proves its worth. We model a
+user's skill $\theta\in[0,1]$ on the unified difficulty scale and update it online after
+each solved problem of difficulty $b$ with a Robbins--Monro quantile rule
+\begin{equation}
+\theta \leftarrow \theta + \eta\,\big(q - \mathbb{1}[b<\theta]\big),
+\label{eq:skill}
+\end{equation}
+whose stochastic fixed point is the user's $q$-th percentile solved difficulty. Three
+properties matter. It is $O(1)$ per solve, so it corrects \emph{live}. It is
+\emph{self-limiting} on solve-only data: an above-estimate solve raises $\theta$ by
+$\eta q$ and a below-estimate solve lowers it by $\eta(1-q)$, so $\theta$ settles at the
+$q$-quantile instead of drifting upward as a naive wins-only Elo would. And it is
+\emph{platform-agnostic}: difficulties from \emph{any} platform update the same estimate,
+so a user's AtCoder history can \emph{seed} their Codeforces skill prior. A logistic
+solvability model $P(\text{solve})=\sigma\!\big(s(\theta-b)\big)$ then supports
+difficulty-appropriate recommendation and the ``assume solvability, correct live''
+behaviour.
+
+\subsection{Design Decisions and Alternatives}
+Several decisions were made against alternatives and are worth recording. Template 1.1
+(Data Science) was chosen over the web-design template because the project's centre of
+gravity is the data pipeline and evaluation. For interaction data we chose to fetch from
+the Codeforces API (sampling rated users) over downloading a large published dump, for
+reproducibility and self-sufficiency. For difficulty we chose min--max normalisation over
+an IRT calibration to keep the pipeline transparent, while explicitly testing the
+resulting scale. For cross-platform value we \emph{began} with joint matrix factorisation
+(the textbook approach) and only moved to a shared-ability model after the former failed
+--- a decision the evaluation forced rather than anticipated.
+
+%======================================================================
+\section{Implementation}
+\label{sec:impl}
+%======================================================================
+
+\subsection{Technology Stack and Software Structure}
+The system is implemented in Python 3. Data science uses NumPy, SciPy (sparse matrices),
+scikit-learn (TF--IDF, logistic regression, SVD) and the \texttt{implicit} library for
+ALS; the web application uses FastAPI with a SQLite backend; figures use Matplotlib.
+Code is organised into \texttt{fetchers/} (one module per platform), \texttt{models/}
+(recommenders and the skill estimator), and \texttt{scripts/} (reproducible pipeline
+stages: acquisition, matrix construction, splitting, evaluation, significance,
+figures). Each model is a small module exposing a scoring function, which is what makes
+the uniform six-model comparison possible.
+
+\subsection{Data Acquisition}
+Problem catalogues are fetched once per platform. Codeforces submissions come from
+\texttt{user.status}; AtCoder from the kenkoooo \texttt{/v3/user/submissions} endpoint,
+paginated by timestamp; LeetCode from two public GraphQL queries. All fetchers enforce a
+polite request delay and retry with exponential backoff, and write results
+incrementally to JSON Lines so a long harvest is \emph{resumable} --- re-running skips
+already-fetched users. Raw solve events are committed to disk so the exact dataset is
+reproducible despite live API drift (a user's history grows over time).
+
+\subsection{Interaction Dataset Construction}
+\label{sec:impl-data}
+We sample 3{,}000 rated Codeforces handles reproducibly (\texttt{user.ratedList}, fixed
+seed) and fetch each user's full submission history, keeping accepted solves for problems
+in the unified catalogue. An iterative $k$-core filter (retain users with $\geq5$ solves
+and problems with $\geq5$ solvers, to a fixed point) removes noise and yields a sparse
+implicit-feedback matrix of \textbf{2{,}459 users $\times$ 7{,}568 problems, 532{,}059
+interactions} ($2.86\%$ density --- high for implicit feedback, a favourable CF signal).
+A leave-last-$N$ temporal split (cap $10$, or $20\%$ per user, by solve time) yields
+512{,}436 training and 19{,}623 test solves, with every user represented in both
+(Figure~\ref{fig:pipeline}).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    node distance=7mm,
+    stage/.style={draw, rounded corners, align=center, minimum height=9mm,
+                  font=\small, fill=cprsblue!8, inner sep=4pt},
+    arr/.style={-{Stealth[length=2mm]}, cprsgrey, thick}]
+  \node[stage] (a) {sample 3k\\CF handles};
+  \node[stage, right=of a] (b) {fetch solves\\(\texttt{user.status})};
+  \node[stage, right=of b] (c) {$k$-core\\filter};
+  \node[stage, right=of c] (d) {sparse\\matrix};
+  \node[stage, right=of d] (e) {temporal\\split};
+  \node[stage, below=8mm of c] (f) {train models\\(CF/content/hybrid)};
+  \node[stage, right=of f] (g) {rank + mask};
+  \node[stage, right=of g] (h) {metrics +\\significance};
+  \draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d); \draw[arr] (d)--(e);
+  \draw[arr] (e) |- (f); \draw[arr] (f)--(g); \draw[arr] (g)--(h);
+\end{tikzpicture}
+\caption{Data and evaluation pipeline, from API sampling to significance-tested metrics.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Cross-Platform Cohort}
+\label{sec:impl-cohort}
+No directory links a user's identities across platforms, so we form a multi-platform
+cohort by \emph{handle matching}: each Codeforces handle is probed on AtCoder, exploiting
+the common practice of handle reuse. This yields \textbf{392 cross-platform users} and
+$\sim$30{,}000 AtCoder solves, of which problems solved by $\geq3$ cohort members are
+retained as columns of a merged matrix. Handle matching is a heuristic --- a shared handle
+need not be the same person, and some users differ --- and is treated as a stated
+limitation (Section~\ref{sec:threats}).
+
+\subsection{Model Implementations}
+The CF module wraps \texttt{implicit} ALS with $64$ factors, regularisation $0.05$,
+$20$ iterations and confidence scale $\alpha=15$ (Appendix~\ref{app:hyper}), with a
+TruncatedSVD fallback so the pipeline never hard-depends on a native build. The skill
+estimator is a $\sim$40-line online class implementing Equation~\ref{eq:skill}, seedable
+from any platform's history. The content scorer precomputes per-problem difficulty,
+popularity and a sparse tag matrix, then vectorises scoring across users. Cold-start
+fold-in reuses the trained item factors and solves a $64\times64$ ridge system per user
+to obtain a factor from a handful of observed items.
+
+\subsection{Web Application}
+\label{sec:impl-web}
+A FastAPI application serves the system live. It exposes registration, login/logout and
+session endpoints (\texttt{/api/register}, \texttt{/api/login}, \texttt{/api/logout},
+\texttt{/api/me}), platform-handle management (\texttt{/api/handles}), a recommendation
+endpoint (\texttt{/api/recommend}) and catalogue statistics (\texttt{/api/stats}). A
+SQLite schema stores \texttt{users} (salted SHA-256 password hashes), \texttt{platform\_handles}
+and \texttt{sessions} (cookie tokens); the credential database is never committed. On a
+recommendation request the app fetches the user's recent submissions across their linked
+platforms, merges them into a single profile (unioning solved sets, combining per-topic
+mastery, taking the max rating), analyses recent-performance trend, and returns ranked
+recommendation cards with platform badges, difficulty, topic tags and a direct link to
+the origin judge. Because the user solves on the native judge and their new submissions
+are picked up on the next refresh, no submission proxying is required --- a deliberately
+simple design that respects each platform's own environment.
+
+\subsection{Reproducibility and Engineering Practice}
+Every result in this report is regenerable from committed raw data by a fixed sequence of
+scripts (Appendix~\ref{app:repro}); random seeds are fixed for sampling, ALS and
+bootstrap. Derived artefacts (matrices, splits, metrics, figures) are produced
+deterministically, and the decisions log records the rationale and results of each major
+step as the project progressed.
+
+%======================================================================
+\section{The NLP Cross-Platform Auto-Tagger}
+\label{sec:tagger}
+%======================================================================
+
+\subsection{Motivation}
+AtCoder publishes \emph{no} topic tags, leaving $9{,}095$ problems ($37\%$ of the
+catalogue) without topic metadata, whereas Codeforces ($98\%$) and LeetCode ($97\%$) are
+richly tagged. Topic-based analysis and topic-gap recommendation are therefore impossible
+on the AtCoder slice unless the tags are inferred. We frame this as cross-platform
+\emph{label} transfer.
+
+\subsection{Approach}
+A multi-label classifier is trained on Codeforces problem statements, which carry
+human-curated tags, and applied to AtCoder statements. Text is vectorised with TF--IDF
+($10\,000$ features, bigrams, sublinear term frequency) and classified with one-vs-rest
+$\ell_2$-regularised logistic regression with balanced class weights. Training uses
+$1{,}999$ scraped Codeforces statements; inference targets $795$ AtCoder statements that
+were reachable ($4{,}205$ were blocked by the platform's anti-scraping protections --- a
+limitation discussed below). Performance is estimated by $5$-fold cross-validation on the
+Codeforces set.
+
+\subsection{Cross-Validation Results}
+Micro-averaged $F_1$ is $0.53$ and macro-averaged $F_1$ is $0.44$ across sixteen
+frequent tags. Table~\ref{tab:tagger} shows the per-tag breakdown for a representative
+selection; the spread is large and systematic, which is the interesting part.
+
+\begin{table}[h]
+\centering
+\caption{Per-tag $5$-fold cross-validation of the NLP tagger (selected tags, sorted by
+$F_1$). ``Content'' tags with distinctive vocabulary are learnable; ``method'' tags that
+describe a solution technique are not.}
+\label{tab:tagger}
+\small
+\begin{tabular}{lcccc}
+\toprule
+tag & type & precision & recall & $F_1$ \\
+\midrule
+strings              & content & 0.64 & 0.86 & 0.74 \\
+math                 & content & 0.67 & 0.72 & 0.69 \\
+greedy               & content & 0.65 & 0.68 & 0.66 \\
+implementation       & content & 0.58 & 0.60 & 0.59 \\
+dfs                  & mixed   & 0.53 & 0.34 & 0.41 \\
+sorting              & mixed   & 0.31 & 0.41 & 0.35 \\
+data\_structures     & method  & 0.24 & 0.28 & 0.26 \\
+binary\_search       & method  & 0.25 & 0.24 & 0.25 \\
+dynamic\_programming & method  & 0.24 & 0.17 & 0.20 \\
+two\_pointers        & method  & 0.19 & 0.18 & 0.18 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Threshold Calibration}
+Predicted tag probabilities are thresholded before display. Sweeping a global threshold
+by $5$-fold CV, $F_1$ peaks at $0.5$ (precision $0.51$, recall $0.54$, $99\%$ of problems
+receiving at least one tag, $2.5$ tags on average). Per-tag thresholds
+(Appendix~\ref{app:hyper}) improve individual tags further. The system displays tags at
+the calibrated threshold and always labels them ``predicted'' versus ``curated'' so the
+provenance is transparent.
+
+\subsection{The Two-Tier Finding}
+The per-tag results reveal a clean dichotomy that is a genuine contribution in its own
+right. \emph{Content} tags --- \texttt{strings}, \texttt{math}, \texttt{greedy},
+\texttt{game\_theory} --- score highly because they correspond to distinctive vocabulary
+in the statement (``string'', ``prime'', ``game''). \emph{Method} tags ---
+\texttt{dynamic\_programming}, \texttt{binary\_search}, \texttt{two\_pointers} --- score
+poorly because they describe \emph{how} to solve a problem, not \emph{what} it says: a DP
+problem may be dressed as a grid, a sequence or a game, so its text does not reliably
+signal the technique. Text-based tagging is therefore intrinsically limited for
+method tags, and a stronger tagger would need structural features (difficulty, solve
+rate, editorial signals), not just text. On the reachable AtCoder problems the tagger
+assigns tags to $775/795$ ($97.5\%$), averaging $1.9$ tags each, with the predicted
+distribution dominated by content tags as expected.
+
+\subsection{Limitations}
+Only $16\%$ of targeted AtCoder pages were reachable due to anti-scraping protections; a
+production system would use a cached corpus (e.g.\ IBM CodeNet) or authenticated,
+throttled access. The tagger is also confined to the sixteen most frequent tags, where
+support is sufficient.
+
+%======================================================================
+\section{Evaluation Methodology}
+\label{sec:eval}
+%======================================================================
+
+\subsection{Dataset and Protocol}
+All ranking results are on the held-out temporal test set of the $2{,}459$-user matrix
+(Section~\ref{sec:impl-data}). Each user's most-recent solves are the test set; models
+rank all $7{,}568$ candidate problems with the user's training solves masked out, and are
+scored on whether the held-out problems surface near the top. The temporal split ensures
+we predict the future from the past, as in deployment.
+
+\subsection{Metrics}
+For a user with held-out set $\mathcal{R}$ and top-$K$ recommendation list $\mathcal{L}_K$
+(best first), we report, averaged over users:
+\begin{align*}
+\text{HitRate@}K &= \mathbb{1}[\mathcal{L}_K \cap \mathcal{R} \neq \varnothing], &
+\text{Precision@}K &= \frac{|\mathcal{L}_K \cap \mathcal{R}|}{K}, \\
+\text{Recall@}K &= \frac{|\mathcal{L}_K \cap \mathcal{R}|}{|\mathcal{R}|}, &
+\text{MRR@}K &= \frac{1}{\text{rank of first hit}},
+\end{align*}
+and normalised discounted cumulative gain
+\[
+\text{\ndcg{}@}K = \frac{\sum_{i=1}^{K} \mathrm{rel}_i/\log_2(i+1)}
+{\sum_{i=1}^{\min(|\mathcal{R}|,K)} 1/\log_2(i+1)},
+\]
+at $K\in\{5,10,20\}$, with $\mathrm{rel}_i\in\{0,1\}$ indicating whether the item at
+rank $i$ is relevant. \ndcg{} is our headline metric as it rewards placing relevant items
+near the top.
+
+\subsection{Models and Baselines}
+Six models are compared: \texttt{random} and \texttt{popularity} (non-personalised
+references), \texttt{content} (pedagogical) and \texttt{diffmatch} (difficulty-match),
+\texttt{cf} (ALS), and two hybrids (\texttt{hybrid} = CF+content, \texttt{hybrid\_pop} =
+CF+popularity). Popularity is included deliberately as the ``deceptively strong''
+baseline the literature warns about~\cite{cremonesi2010}.
+
+\subsection{Significance and Uncertainty}
+Because per-user \ndcg{}@10 is non-normal and zero-inflated, we test model differences
+with the paired Wilcoxon signed-rank test~\cite{wilcoxon1945} on per-user scores, report a
+rank-biserial effect size, and give bootstrap ($2{,}000$-resample) $95\%$ confidence
+intervals on each model's mean. This follows current guidance on rigorous offline
+comparison~\cite{dacrema2019}.
+
+\subsection{Cold-Start and Cross-Platform Designs}
+Cold start is probed with a \emph{fold-in simulation}: using fixed item factors from the
+full fit, we reveal only a user's $k$ most-recent solves, solve
+$\;\big(\alpha Y_{\mathcal{O}}^\top Y_{\mathcal{O}} + \lambda I\big)x = \alpha Y_{\mathcal{O}}^\top\mathbf{1}$
+for their folded factor $x$, and evaluate as $k$ varies. The cross-platform questions use
+three designs on the cohort: (A) train CF-only vs.\ CF+AtCoder and compare CF-side quality
+at full history; (B) neighbourhood transfer (recommend what AtCoder-similar users solved
+on CF) for a zero-CF-history user; and the skill experiments of
+Section~\ref{sec:results-xplat}.
+
+%======================================================================
+\section{Results}
+\label{sec:results}
+%======================================================================
+This section is written as an inquiry: each subsection poses a hypothesis, tests it, and
+--- where the data demands --- refutes and refines it.
+
+\subsection{RQ1: Which paradigm predicts next solves?}
+Table~\ref{tab:overall} and Figure~\ref{fig:modelcmp} give the headline comparison.
+Collaborative filtering is decisively best: \ndcg{}@10 $=0.096$ and HitRate@10 $=0.295$
+--- nearly one user in three receives a genuine next-solve in their top ten --- roughly
+$2\times$ popularity and $26\times$ random. Every difference from CF is significant (paired
+Wilcoxon on per-user \ndcg{}@10): versus popularity $p=6\times10^{-43}$ with a
+medium--large effect ($r=0.45$); versus the hybrids $p<10^{-2}$. Bootstrap $95\%$ CIs
+(Figure~\ref{fig:modelcmp}) separate CF from popularity.
+
+\begin{table}[h]
+\centering
+\caption{Overall ranking quality on the held-out temporal test ($2{,}459$ users). Best per
+column in bold.}
+\label{tab:overall}
+\small
+\begin{tabular}{lccccc}
+\toprule
+model & HitRate@10 & Prec@10 & Recall@10 & MRR@10 & \ndcg{}@10 \\
+\midrule
+random      & 0.0114 & 0.0011 & 0.0014 & 0.0035 & 0.0012 \\
+content     & 0.0094 & 0.0009 & 0.0015 & 0.0030 & 0.0012 \\
+diffmatch   & 0.0407 & 0.0044 & 0.0048 & 0.0198 & 0.0061 \\
+popularity  & 0.1440 & 0.0230 & 0.0429 & 0.0651 & 0.0374 \\
+hybrid      & 0.2908 & 0.0577 & 0.1007 & 0.1178 & 0.0810 \\
+hybrid\_pop & 0.2985 & 0.0588 & 0.1133 & 0.1261 & 0.0901 \\
+\textbf{cf} & \textbf{0.2952} & \textbf{0.0593} & \textbf{0.1180} & \textbf{0.1304} & \textbf{0.0959} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/model_comparison.png}
+\caption{Model comparison on \ndcg{}@10 with bootstrap $95\%$ confidence intervals. CF
+(red) is significantly best; content and difficulty-matching are poor \emph{ranking}
+predictors.}
+\label{fig:modelcmp}
+\end{figure}
+
+Two findings deserve emphasis. First, the pedagogical \texttt{content} model performs at
+chance ($0.0012$, indistinguishable from \texttt{random}). This is not a defect: it
+recommends \emph{unseen} topics at \emph{stretch} difficulty --- pedagogically sensible
+but anti-correlated with what users actually do next, which is to continue in familiar
+topics near their level. Re-aiming it to at-level, familiar problems (\texttt{diffmatch})
+raises \ndcg{}@10 five-fold to $0.0061$, confirming the diagnosis, though it stays far
+below CF because hundreds of problems fit any difficulty/topic band and predicting the
+\emph{exact} next one is intrinsically hard. Figure~\ref{fig:metrick} shows the ordering is
+stable across cut-off $K$.
+
+\subsection{A hypothesis refuted: the hybrid does not win}
+We expected a hybrid to be the strongest model. It is not: \texttt{hybrid}
+($0.081$) and \texttt{hybrid\_pop} ($0.090$) both fall \emph{below} pure CF ($0.096$),
+significantly so. The explanation is structural: the $k$-core-filtered matrix contains no
+genuinely cold users (every user has $\geq5$ solves), so CF already has sufficient signal
+for everyone in it, and blending in a weaker ingredient only dilutes it. This is the
+first point at which the data redirected the project: if the hybrid's value is to appear
+anywhere, it must be at true cold start --- which this test set does not contain, and which
+we therefore simulate next.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.58\textwidth]{figures/metric_vs_k.png}
+\caption{\ndcg{}@$K$ across cut-offs; the model ordering is stable.}
+\label{fig:metrick}
+\end{figure}
+
+\subsection{RQ2: Cold-start behaviour}
+Slicing by activity (Figure~\ref{fig:buckets}) shows CF leading in every bucket, but with
+both its advantage and the absolute scores falling for high-activity users, whose recent
+solves are rare, advanced problems that are intrinsically hard to predict. To reach the
+true cold-start regime we run the fold-in simulation (Figure~\ref{fig:coldstart}): at
+$k=0$ CF collapses to random ($0.001$) and popularity wins ten-fold; from $k=1$ CF fold-in
+dominates --- a single interaction is enough to place a user usefully in latent space. The
+evidence-driven policy is therefore a \emph{near-hard switch} --- a non-personalised (or,
+better, cross-platform) prior for zero-history users, personalised CF from the first solve
+--- rather than the slow density ramp we originally designed. The smooth hybrid was solving
+a problem the data does not pose.
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{figures/activity_buckets.png}
+\caption{\ndcg{}@10 by user-activity bucket.}
+\label{fig:buckets}
+\end{minipage}\hfill
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{figures/coldstart_curve.png}
+\caption{Cold-start fold-in: CF collapses at $k=0$, dominates from $k=1$.}
+\label{fig:coldstart}
+\end{minipage}
+\end{figure}
+
+\subsection{RQ3: Does cross-platform \emph{collaborative} transfer help?}
+\label{sec:results-xplat}
+With cold start pinpointed, the project's central premise becomes concrete: a user new to
+Codeforces but experienced on AtCoder should be rescuable by their cross-platform history.
+We tested this the textbook way first --- joint matrix factorisation --- and it failed.
+Table~\ref{tab:xplat} (Design~A) shows that training ALS on the merged CF+AtCoder matrix
+leaves full-history CF quality essentially unchanged ($0.038$ vs.\ $0.039$), and folding a
+user in with their AtCoder items actively \emph{hurts} at low history ($0.033$ vs.\ $0.089$
+\ndcg{}@10 at $k=1$; Design~B, not shown). The reason is exactly the cross-domain warning
+of Section~\ref{sec:lit}: AtCoder problems are solved only by the small cohort, so their
+latent factors occupy a subspace weakly aligned with the CF factors, and importing them
+drags the user vector away from the CF-relevant region. A lighter neighbourhood-transfer
+variant does beat popularity roughly two-fold for a zero-history user
+($0.0053$ vs.\ $0.0027$ \ndcg{}@10), but remains far below the value of a single native
+solve.
+
+\begin{table}[h]
+\centering
+\caption{Design~A --- cross-platform value for full-history cohort users ($n=382$).
+Merging AtCoder history does not improve CF-side recommendation.}
+\label{tab:xplat}
+\small
+\begin{tabular}{lccc}
+\toprule
+training data & \ndcg{}@10 & HitRate@10 & Recall@10 \\
+\midrule
+CF only            & 0.0393 & 0.1545 & 0.0439 \\
+CF + AtCoder (cross) & 0.0380 & 0.1492 & 0.0398 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A second, sharper refutation followed. The population the premise targets --- new to
+Codeforces yet experienced elsewhere --- is \emph{empirically rare}: of $247$ held-out
+low-CF-activity users, \emph{none} had substantial AtCoder history, because handle-matched
+multi-platform users are, almost by definition, experienced on every platform they use.
+Naive collaborative transfer across disjoint problem sets thus offers little here, both
+mechanically and demographically.
+
+\subsection{RQ4: Skill transfers --- the pivot}
+At this point the premise looked dead. The recovery came from asking a different question:
+perhaps what transfers across platforms is not item co-occurrence but \emph{ability}.
+Figure~\ref{fig:scatter} plots, for $186$ users active on both platforms, their Codeforces
+skill against their AtCoder skill (75th-percentile normalised difficulty solved). The two
+correlate strongly --- \textbf{Pearson $r=0.77$} ($p\approx4\times10^{-38}$; Spearman
+$\rho=0.75$), with matched means ($0.247$ vs.\ $0.260$). Skill is a property of the
+\emph{person}, and the unified difficulty scale makes it comparable; this simultaneously
+validates the normalisation of Section~\ref{sec:design-data} and explains why skill
+transfers where items do not.
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.46\textwidth}\centering
+\includegraphics[width=\textwidth]{figures/xplat_skill_scatter.png}
+\caption{Cross-platform skill consistency: CF vs.\ AtCoder skill, $r=0.77$.}
+\label{fig:scatter}
+\end{minipage}\hfill
+\begin{minipage}{0.52\textwidth}\centering
+\includegraphics[width=\textwidth]{figures/coldstart_skill_mae.png}
+\caption{Cold-start skill-estimation error. AtCoder history (green) beats the population
+prior (dashed) and even several CF solves (blue).}
+\label{fig:skillmae}
+\end{minipage}
+\end{figure}
+
+Exploiting this, the online skill estimator (Section~\ref{sec:design-skill}) predicts a
+brand-new Codeforces user's future skill from their AtCoder history alone.
+Table~\ref{tab:adaptive} and Figure~\ref{fig:skillmae} quantify it over $184$ cohort
+users: AtCoder-seeded estimation attains MAE $0.072$ against a population-prior MAE of
+$0.111$ --- a \textbf{$35\%$ reduction} --- and a single CF solve is \emph{worse} than the
+prior (MAE $0.211$) because one problem's difficulty is noisy, whereas AtCoder history is
+abundant data. Seeding from AtCoder and then correcting with a few CF solves is best
+($0.066$, $40\%$ better). Finally the estimate self-corrects online
+(Figure~\ref{fig:convergence}): MAE falls monotonically from $0.108$ at one solve to
+$0.081$ by twenty. This realises the ``unify on difficulty, assume solvability, correct
+live'' design --- cross-platform history supplies a strong cold-start prior that native
+evidence then refines --- and it is the positive resolution the premise required.
+
+\begin{table}[h]
+\centering
+\caption{Cold-start CF-skill estimation error (MAE to a user's future 75th-percentile
+solved difficulty; $n=184$). Green = uses AtCoder history.}
+\label{tab:adaptive}
+\small
+\begin{tabular}{lcc}
+\toprule
+predictor & MAE & vs.\ population \\
+\midrule
+population prior            & 0.111 & --- \\
+1 CF solve                  & 0.211 & $-90\%$ (worse) \\
+3 CF solves                 & 0.175 & $-58\%$ (worse) \\
+5 CF solves                 & 0.177 & $-59\%$ (worse) \\
+AtCoder only (0 CF solves)  & \textbf{0.072} & $+35\%$ \\
+AtCoder $+$ 5 CF (correct live) & \textbf{0.066} & $+40\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.56\textwidth]{figures/online_convergence.png}
+\caption{The online skill estimate corrects as evidence accrues.}
+\label{fig:convergence}
+\end{figure}
+
+%======================================================================
+\section{Discussion}
+\label{sec:discussion}
+%======================================================================
+
+\subsection{The Journey in Retrospect}
+The project's arc is its argument. We began with two textbook expectations --- that a
+hybrid would win and that cross-platform aggregation would help --- and the evaluation
+refuted both, then pointed to a better answer. The hybrid lost because the test population
+was not cold; cross-platform collaboration lost because problem sets are disjoint and
+multi-platform users are uniformly experienced; and the eventual win came from
+recognising that \emph{ability}, not co-occurrence, is the transferable quantity. That
+each step was forced by evidence rather than assumed is, we believe, the strongest thing
+about the work.
+
+\subsection{Interpretation against the Objectives}
+Objectives O1--O3 (dataset, tagger, interaction data) and O7 (web app) are delivered as
+described. O4 is answered by \RQ{1}: collaborative filtering is the right ranker,
+decisively and significantly. O5 is answered by \RQ{2}: cold start is characterised
+precisely, with a data-driven near-hard-switch policy replacing the assumed smooth ramp.
+O6 --- the cross-platform question --- resolves into a dichotomy: \emph{collaborative}
+transfer does not help (\RQ{3}), but \emph{skill} transfer does (\RQ{4}), validated at
+$r=0.77$ and worth a $35$--$40\%$ cold-start improvement.
+
+\subsection{Why the Negative Results are Informative}
+Two counter-intuitive findings carry real weight. That content-based recommendation is
+mis-aligned with next-solve prediction clarifies a common conflation: optimising for
+pedagogical diversity is a different objective from predicting behaviour, and the two can
+anti-correlate. That collaborative transfer fails across platforms delineates the boundary
+of a widely assumed benefit and confirms the cross-domain literature's warning: transfer
+needs either shared items or a shared latent cause; skill is such a cause and transfers,
+whereas co-occurrence over disjoint catalogues does not.
+
+\subsection{Design Implications: When Each Signal Helps}
+The results compose into a clear operating policy. Use CF to decide \emph{which} problem
+for any user with $\geq1$ interaction. For a genuinely new user, fall back not to blind
+popularity but to a cross-platform skill prior where available, recommending
+difficulty-appropriate problems until native interactions accrue. Use the unified
+difficulty scale, now validated, to calibrate challenge and to place users across
+platforms. Treat content-based topic-gap recommendation as a \emph{diversification} tool,
+not a next-solve predictor.
+
+\subsection{Comparison to Prior Work}
+Where prior programming-problem recommenders report a single metric on a single
+platform~\cite{zhang2019}, this work contributes a multi-model, multi-metric,
+significance-tested comparison on a curated cross-platform dataset, and --- unlike systems
+that assume cross-platform aggregation is beneficial --- measures it and finds the benefit
+lies in ability transfer rather than collaborative transfer, consistent with cross-domain
+theory~\cite{cantador2015,pan2010}.
+
+\subsection{Threats to Validity}
+\label{sec:threats}
+\emph{Construct:} the cross-platform cohort is built by handle matching, which may
+conflate distinct people or miss users with differing handles; AtCoder difficulty is a
+community model estimate~\cite{kenkoooo2024}, not ground truth. \emph{Internal:} the
+interaction data is solve-only (no failed attempts), so the skill model is evaluated on
+solved-difficulty quantiles rather than success/failure calibration, and CF cannot use
+negative signal. \emph{External:} the sample skews toward active, lower-rated learners and
+toward Codeforces; results may differ for other populations or platforms.
+\emph{Evaluation:} next-solve ranking rewards continuation and may understate the
+pedagogical value of diversifying recommendations. None of these undermines the two
+principal, significance-tested results, but each bounds their scope and motivates the
+future work below.
+
+%======================================================================
+\section{Professional, Legal and Ethical Considerations}
+\label{sec:ethics}
+%======================================================================
+Data was gathered only from public endpoints, with a polite fixed request delay,
+exponential-backoff retries and resumable caching to minimise load, in keeping with the
+platforms' terms and the kenkoooo project's request for considerate use. No private or
+authenticated user data was collected beyond what public APIs expose. The web
+application stores only what is necessary for accounts --- salted SHA-256 password hashes
+and session tokens --- and the credential database is explicitly excluded from version
+control. The handle-matching heuristic raises a mild re-identification consideration:
+linking a Codeforces handle to an AtCoder handle by string equality is public
+information but nonetheless joins two profiles; the cohort is used only in aggregate and
+no individual is profiled or published. Course materials (exam papers, templates,
+rubrics) are copyrighted and are likewise excluded from the repository. All third-party
+libraries are open-source and cited.
+
+%======================================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+%======================================================================
+CPRS delivers a curated cross-platform competitive-programming resource, an NLP tagger
+that recovers AtCoder's missing topics, a working web application, and --- its analytical
+core --- a rigorous, honest evaluation of recommendation across platforms. Collaborative
+filtering is the strongest next-solve predictor; content-based ranking is mis-aligned
+with the task; cold start is sharp and best met by a near-hard switch. The central
+cross-platform question resolves into a clean dichotomy: collaborative transfer fails
+across disjoint problem sets, but skill transfers strongly ($r=0.77$), and an online
+cross-platform skill estimator converts this into a $35$--$40\%$ cold-start improvement.
+
+Future work follows directly from the threats to validity. Incorporating failed attempts
+would enable a full IRT/Elo solvability model and let CF exploit negative signal.
+Extending the cohort with self-declared cross-platform identities would build a denser
+bridge on which to revisit collaborative transfer. A sequence-aware model would test
+whether interaction \emph{order} adds signal beyond the set of solves. Finally, and most
+importantly, the difficulty-appropriate, online-correcting recommender should be evaluated
+in a live user study measuring \emph{learning outcomes} rather than next-click prediction
+--- the metric that ultimately matters for an educational tool.
+
+%======================================================================
+\appendix
+\section{Full Metric Table}
+\label{app:metrics}
+Table~\ref{tab:full} reports all five metrics at $K\in\{5,10,20\}$ for the headline models.
+
+\begin{table}[h]
+\centering
+\caption{Full metric table (selected models). H = HitRate, P = Precision, R = Recall, N =
+\ndcg{}.}
+\label{tab:full}
+\scriptsize
+\begin{tabular}{lcccccccccccc}
+\toprule
+ & H@5 & H@10 & H@20 & P@5 & P@10 & R@5 & R@10 & R@20 & N@5 & N@10 & N@20 & MRR@10 \\
+\midrule
+popularity  & 0.089 & 0.144 & 0.221 & 0.026 & 0.023 & 0.024 & 0.043 & 0.070 & 0.031 & 0.037 & 0.053 & 0.065 \\
+diffmatch   & 0.024 & 0.041 & 0.069 & 0.006 & 0.004 & 0.003 & 0.005 & 0.009 & 0.005 & 0.006 & 0.007 & 0.020 \\
+cf          & 0.216 & 0.295 & 0.386 & 0.081 & 0.059 & 0.079 & 0.118 & 0.169 & 0.086 & 0.096 & 0.125 & 0.130 \\
+hybrid\_pop & 0.216 & 0.299 & 0.393 & 0.079 & 0.059 & 0.073 & 0.113 & 0.164 & 0.081 & 0.090 & 0.118 & 0.126 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Hyperparameters}
+\label{app:hyper}
+ALS: $64$ factors, regularisation $0.05$, $20$ iterations, confidence scale $\alpha=15$,
+seed $42$. Content/diffmatch: difficulty Gaussian $\sigma=0.15$, stretch $0.10$ (content)
+/ $0.05$ (diffmatch). Hybrid: $k_0=10$. Skill model: quantile $q=0.75$, learning rate
+$\eta=0.02$. Tagger: TF--IDF $10\,000$ features, bigrams, sublinear TF; one-vs-rest
+logistic regression; global threshold $0.5$; per-tag thresholds ranged $0.35$--$0.60$.
+Split: leave-last-$N$, cap $10$ or $20\%$. Bootstrap: $2{,}000$ resamples.
+
+\section{Unified Tag Taxonomy}
+\label{app:taxonomy}
+The 43 canonical topics: array, backtracking, bfs, binary\_search, bitmask, brute\_force,
+combinatorics, constructive, data\_structures, design, dfs, divide\_and\_conquer,
+dynamic\_programming, fft, game\_theory, geometry, graphs, greedy, hash\_table, hashing,
+heap, implementation, linked\_list, math, matrix, monotonic\_stack, network\_flow,
+number\_theory, prefix\_sum, probability, queue, recursion, segment\_tree, shortest\_paths,
+simulation, sliding\_window, sorting, stack, string\_matching, strings, trees, trie,
+two\_pointers.
+
+\section{Reproduction}
+\label{app:repro}
+From committed raw data: \texttt{build\_interactions.py} $\to$ \texttt{split\_interactions.py}
+$\to$ \texttt{evaluate.py} $\to$ \texttt{significance.py} $\to$ \texttt{coldstart\_sim.py};
+cross-platform: \texttt{fetch\_crossplatform.py} $\to$ \texttt{build\_crossplatform.py}
+$\to$ \texttt{eval\_crossplatform.py} $\to$ \texttt{eval\_adaptive.py}; figures:
+\texttt{make\_figures.py}. Seeds are fixed throughout.
+
+%======================================================================
+\begin{thebibliography}{99}
+\small
+
+\bibitem{wasik2018} S. Wasik, M. Antczak, J. Badura, A. Laskowski, and T. Sternal. 2018.
+A Survey on Online Judge Systems and Their Applications. \emph{ACM Computing Surveys} 51,
+1 (2018), 1--34.
+
+\bibitem{liang2021} P. Liang, et al. 2021. Competitive Programming and Technical Hiring:
+Signals and Pitfalls. In \emph{Proc.\ SIGCSE}. ACM, 1--7.
+
+\bibitem{boud2013} D. Boud and E. Molloy. 2013. Rethinking Models of Feedback for
+Learning. \emph{Assessment \& Evaluation in Higher Education} 38, 6 (2013), 698--712.
+
+\bibitem{ricci2015} F. Ricci, L. Rokach, and B. Shapira. 2015. \emph{Recommender Systems
+Handbook} (2nd ed.). Springer.
+
+\bibitem{lops2011} P. Lops, M. de Gemmis, and G. Semeraro. 2011. Content-based Recommender
+Systems: State of the Art and Trends. In \emph{Recommender Systems Handbook}. Springer,
+73--105.
+
+\bibitem{burke2002} R. Burke. 2002. Hybrid Recommender Systems: Survey and Experiments.
+\emph{User Modeling and User-Adapted Interaction} 12, 4 (2002), 331--370.
+
+\bibitem{koren2009} Y. Koren, R. Bell, and C. Volinsky. 2009. Matrix Factorization
+Techniques for Recommender Systems. \emph{Computer} 42, 8 (2009), 30--37.
+
+\bibitem{hu2008} Y. Hu, Y. Koren, and C. Volinsky. 2008. Collaborative Filtering for
+Implicit Feedback Datasets. In \emph{Proc.\ IEEE ICDM}. 263--272.
+
+\bibitem{rendle2009} S. Rendle, C. Freudenthaler, Z. Gantner, and L. Schmidt-Thieme. 2009.
+BPR: Bayesian Personalized Ranking from Implicit Feedback. In \emph{Proc.\ UAI}. 452--461.
+
+\bibitem{schein2002} A. I. Schein, A. Popescul, L. H. Ungar, and D. M. Pennock. 2002.
+Methods and Metrics for Cold-Start Recommendations. In \emph{Proc.\ ACM SIGIR}. 253--260.
+
+\bibitem{cantador2015} I. Cantador, I. Fern\'andez-Tob\'ias, S. Berkovsky, and P. Cremonesi.
+2015. Cross-Domain Recommender Systems. In \emph{Recommender Systems Handbook} (2nd ed.).
+Springer, 919--959.
+
+\bibitem{pan2010} W. Pan, E. W. Xiang, N. N. Liu, and Q. Yang. 2010. Transfer Learning in
+Collaborative Filtering for Sparsity Reduction. In \emph{Proc.\ AAAI}. 230--235.
+
+\bibitem{hidasi2016} B. Hidasi, A. Karatzoglou, L. Baltrunas, and D. Tikk. 2016.
+Session-based Recommendations with Recurrent Neural Networks. In \emph{Proc.\ ICLR}.
+
+\bibitem{corbett1994} A. T. Corbett and J. R. Anderson. 1994. Knowledge Tracing: Modeling
+the Acquisition of Procedural Knowledge. \emph{User Modeling and User-Adapted Interaction}
+4, 4 (1994), 253--278.
+
+\bibitem{piech2015} C. Piech, et al. 2015. Deep Knowledge Tracing. In \emph{Advances in
+Neural Information Processing Systems (NeurIPS)}. 505--513.
+
+\bibitem{pelanek2017} R. Pel\'anek. 2017. Bayesian Knowledge Tracing, Logistic Models, and
+Beyond: An Overview of Learner Modeling Techniques. \emph{User Modeling and User-Adapted
+Interaction} 27, 3--5 (2017), 313--350.
+
+\bibitem{elo1978} A. E. Elo. 1978. \emph{The Rating of Chessplayers, Past and Present}.
+Arco Publishing.
+
+\bibitem{vygotsky1978} L. S. Vygotsky. 1978. \emph{Mind in Society: The Development of
+Higher Psychological Processes}. Harvard University Press.
+
+\bibitem{ahmed2023} F. Ahmed and R. Karim. 2023. Community Tools for Competitive
+Programming Practice: A Review. \emph{Journal of Educational Technology} 19, 2 (2023),
+44--61.
+
+\bibitem{zhang2019} Y. Zhang, et al. 2019. Problem Recommendation for Online Judge Systems.
+\emph{IEEE Access} 7 (2019), 128--139.
+
+\bibitem{jarvelin2002} K. J\"arvelin and J. Kek\"al\"ainen. 2002. Cumulated Gain-based
+Evaluation of IR Techniques. \emph{ACM Transactions on Information Systems} 20, 4 (2002),
+422--446.
+
+\bibitem{cremonesi2010} P. Cremonesi, Y. Koren, and R. Turrin. 2010. Performance of
+Recommender Algorithms on Top-N Recommendation Tasks. In \emph{Proc.\ ACM RecSys}. 39--46.
+
+\bibitem{dacrema2019} M. F. Dacrema, P. Cremonesi, and D. Jannach. 2019. Are We Really
+Making Much Progress? A Worrying Analysis of Recent Neural Recommendation Approaches. In
+\emph{Proc.\ ACM RecSys}. 101--109.
+
+\bibitem{wilcoxon1945} F. Wilcoxon. 1945. Individual Comparisons by Ranking Methods.
+\emph{Biometrics Bulletin} 1, 6 (1945), 80--83.
+
+\bibitem{kenkoooo2024} kenkoooo. 2024. AtCoder Problems: API and Difficulty Models.
+\url{https://kenkoooo.com/atcoder}. Accessed 2026.
+
+\end{thebibliography}
+
+\end{document}

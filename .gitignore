@@ -16,3 +16,12 @@ cprs/data/*.db-wal
 *.pdf
 rubric/
 preliminary_report_requirements.txt
+
+# LaTeX build artifacts (report PDF is regenerable from the .tex source)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
