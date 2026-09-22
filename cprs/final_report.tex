@@ -32,8 +32,28 @@
 
 \begin{document}
 
-\maketitle
+%---------------------------------------------------------------- title page
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+{\Huge\bfseries CPRS: A Cross-Platform\\[0.3em] Competitive Programming\\[0.3em]
+Recommendation System\par}
+\vspace{2cm}
+{\Large CM3070 Computer Science Final Project\par}
+\vspace{0.4em}
+{\Large\itshape Final Report\par}
+\vspace{1.2em}
+{\large Template 1.1: Data-Driven Personalised\\Educational Content Recommendation\par}
+\vfill
+{\large \textbf{Author:}\quad\rule{5cm}{0.4pt}\par}
+\vspace{0.4em}
+{\large \textbf{Student ID:}\quad\rule{5cm}{0.4pt}\par}
+\vspace{1.5em}
+{\large \today\par}
+\end{titlepage}
 
+%---------------------------------------------------------------- abstract
+\pagenumbering{roman}
 \begin{abstract}
 \noindent Competitive-programming platforms host millions of problems but give
 users little personalised guidance on what to solve next, and each platform is an
@@ -62,11 +82,14 @@ well-explained negative results that sharpen the boundary of a commonly assumed
 benefit.
 \end{abstract}
 
+\newpage
+\setcounter{tocdepth}{1}
 \tableofcontents
 \newpage
+\pagenumbering{arabic}
 
 %======================================================================
-\section{Introduction}
+\section[Introduction \textnormal{\small(\textasciitilde800 words)}]{Introduction}
 \label{sec:intro}
 %======================================================================
 
@@ -184,7 +207,7 @@ Section~\ref{sec:conclusion} concludes. Appendices give full metric tables,
 hyperparameters, the taxonomy and reproduction instructions.
 
 %======================================================================
-\section{Literature Review}
+\section[Literature Review \textnormal{\small(\textasciitilde700 words)}]{Literature Review}
 \label{sec:lit}
 %======================================================================
 
@@ -302,7 +325,7 @@ cross-platform skill estimator (\S\ref{sec:design-skill}) \\
 \end{table}
 
 %======================================================================
-\section{Requirements and Design}
+\section[Requirements and Design \textnormal{\small(\textasciitilde800 words)}]{Requirements and Design}
 \label{sec:design}
 %======================================================================
 
@@ -453,7 +476,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section{Implementation}
+\section[Implementation \textnormal{\small(\textasciitilde630 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -554,7 +577,7 @@ deterministically, and the decisions log records the rationale and results of ea
 step as the project progressed.
 
 %======================================================================
-\section{The NLP Cross-Platform Auto-Tagger}
+\section[The NLP Cross-Platform Auto-Tagger \textnormal{\small(\textasciitilde370 words)}]{The NLP Cross-Platform Auto-Tagger}
 \label{sec:tagger}
 %======================================================================
 
@@ -634,7 +657,7 @@ throttled access. The tagger is also confined to the sixteen most frequent tags,
 support is sufficient.
 
 %======================================================================
-\section{Evaluation Methodology}
+\section[Evaluation Methodology \textnormal{\small(\textasciitilde260 words)}]{Evaluation Methodology}
 \label{sec:eval}
 %======================================================================
 
@@ -688,7 +711,7 @@ on CF) for a zero-CF-history user; and the skill experiments of
 Section~\ref{sec:results-xplat}.
 
 %======================================================================
-\section{Results}
+\section[Results \textnormal{\small(\textasciitilde810 words)}]{Results}
 \label{sec:results}
 %======================================================================
 This section is written as an inquiry: each subsection poses a hypothesis, tests it, and
@@ -892,7 +915,7 @@ AtCoder $+$ 5 CF (correct live) & \textbf{0.066} & $+40\%$ \\
 \end{figure}
 
 %======================================================================
-\section{Discussion}
+\section[Discussion \textnormal{\small(\textasciitilde480 words)}]{Discussion}
 \label{sec:discussion}
 %======================================================================
 
@@ -956,7 +979,7 @@ principal, significance-tested results, but each bounds their scope and motivate
 future work below.
 
 %======================================================================
-\section{Professional, Legal and Ethical Considerations}
+\section[Professional, Legal and Ethical Considerations \textnormal{\small(\textasciitilde140 words)}]{Professional, Legal and Ethical Considerations}
 \label{sec:ethics}
 %======================================================================
 Data was gathered only from public endpoints, with a polite fixed request delay,
@@ -973,7 +996,7 @@ rubrics) are copyrighted and are likewise excluded from the repository. All thir
 libraries are open-source and cited.
 
 %======================================================================
-\section{Conclusion and Future Work}
+\section[Conclusion and Future Work \textnormal{\small(\textasciitilde180 words)}]{Conclusion and Future Work}
 \label{sec:conclusion}
 %======================================================================
 CPRS delivers a curated cross-platform competitive-programming resource, an NLP tagger
