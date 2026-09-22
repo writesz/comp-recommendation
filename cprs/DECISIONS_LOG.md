@@ -516,3 +516,49 @@ Asked which direction to prioritise; user chose **cross-platform value** over "s
 > **Cross-platform history is a cold-start remedy.** Day 3 showed CF collapses for zero-history users. A user new to Codeforces but experienced on AtCoder/LeetCode is only "cold" if you look at one platform — merging their cross-platform profile makes them warm immediately. So the cross-platform contribution *is* the principled answer to the cold-start problem the evaluation exposed.
 
 The hybrid is reframed as the cold-start **mechanism** (personalized once ≥1 signal exists, on any platform); cross-platform data is what *supplies* that signal for users cold on the target platform. Next action: acquire a multi-platform cohort by handle-matching the 3,000 CF users against AtCoder (kenkoooo), then compare CF-only vs cross-platform recommendation quality.
+
+### Cross-platform value — thorough investigation, honest (mostly negative) result
+
+Handle-matched the 3,000 CF users against AtCoder (kenkoooo); probe stopped at 80% (2,410 probed) → **392 cross-platform users, ~30K AtCoder solves** (220 with ≥10 AC solves). Built a merged CF+AtCoder matrix (2,459 × 10,239; 2,671 AtCoder problems with ≥3 cohort solvers). Tested three transfer mechanisms on the unchanged CF held-out test:
+
+1. **Joint ALS (AtCoder as extra columns), fold-in with CF+AC items — robustly *hurts*.** Design B: cross 0.033 vs cf_only 0.089 nDCG@10 at k=1. AtCoder problems are solved only by the small cohort, so their latent factors sit in a subspace weakly aligned with CF; folding them in drags the user vector away from the CF-relevant region. Naive joint MF does not transfer across disjoint problem sets.
+
+2. **AtCoder-neighborhood transfer (cosine over AtCoder solves → recommend neighbors' CF solves) — weak positive.** For proxy-cold users it beats the popularity baseline ~2× (0.0053 vs 0.0027 nDCG@10) using *no* CF history — but a single native CF solve (0.089) is ~17× better still.
+
+3. **Decisive test on genuinely CF-cold users — the target population barely exists.** Users held out of training with few CF solves ([3,20]) *and* real AtCoder history (≥10): **zero** of 247 held-out users qualify (only 2 have ≥5 AC solves). **Structural finding:** handle-matched cross-platform users are experienced on *both* platforms — the "new to CF, veteran on AtCoder" user the thesis targets is empirically rare.
+
+**Honest conclusion:** cross-platform *collaborative* transfer offers limited practical value here, for two compounding reasons — disjoint problem sets weaken latent transfer, and the cold-start-target population is rare because multi-platform users are broadly experienced. This is a legitimate, rigorous negative result (good for "critical evaluation"), but it is **not** the triumphant positive headline the thrust assumed. Scripts: `build_crossplatform.py`, `eval_crossplatform.py`, `eval_coldstart_xplat.py`. Results in `data/xplat_results.json`, `data/coldstart_xplat_results.json`.
+
+**Decision pending (user):** reframe the project's headline contribution around what is robustly strong — the curated cross-platform dataset, the NLP auto-tagger, and a rigorous comparative evaluation with several well-explained (incl. counterintuitive) findings — rather than a cross-platform hybrid that wins. See next Q&A.
+
+### BREAKTHROUGH: cross-platform value is in DIFFICULTY/SKILL transfer, not collaboration
+
+User's insight: bet on unifying **difficulty + category** and *assume solvability from difficulty-vs-skill, correcting live* — rather than collaborative transfer. Two checks:
+
+1. **Difficulty-match ranking is weak but validates the direction.** A difficulty-matched, *familiar*-category scorer (`ContentScorer.score_all_match`: at-level difficulty + topics the user already practises) scores nDCG@10 0.0061 — **5× the old pedagogical content scorer** (0.0012), confirming "at-level + familiar" > "stretch + unseen". Still below popularity/CF as a *next-item* predictor (predicting the exact next problem among hundreds at the right level is intractable) — but next-item ranking is the wrong metric for this idea.
+
+2. **The unified difficulty scale is strongly validated.** For 186 users with ≥10 difficulty-bearing solves on both CF and AtCoder, **CF-skill vs AtCoder-skill correlates at Pearson r=0.773 (p≈4e-38), Spearman ρ=0.745**, with matched means (0.247 vs 0.260). Skill is a property of the person and the normalized difficulty makes it comparable across platforms.
+
+**This is the positive cross-platform result.** Collaborative transfer fails (disjoint problem sets), but **difficulty/skill transfer works** — enabling cross-platform *difficulty calibration*: a user cold on CF but active on AtCoder has a known skill level, so we can recommend appropriately-hard CF problems immediately. That is the cross-platform cold-start remedy that survives the data (unlike collaborative transfer). The "correct live" idea becomes an **online adaptive skill estimate** grounded in this validated scale.
+
+**Synthesised contribution (proposed):** CF ranks *which* problems; the validated cross-platform difficulty scale calibrates *at what level* and supplies a skill prior for cold users; an online skill update adapts as outcomes arrive. Cross-platform is now *essential* (normalized difficulty is what places an AtCoder user on the CF scale) and *validated* (r=0.77).
+
+### Adaptive cross-platform skill model built + evaluated — the positive cross-platform result
+
+`models/skill.py`: online skill estimator on the unified difficulty scale — a Robbins-Monro quantile tracker (`theta += lr*(q - 1[b<theta])`), O(1) per solve, self-limiting on solve-only data (no wins-only Elo drift), seedable from any platform. `scripts/eval_adaptive.py` tests it.
+
+**(A) Cross-platform cold-start skill estimation (n=184), MAE to a user's future CF skill (75th-pct difficulty):**
+
+| predictor | MAE | vs population |
+|---|---|---|
+| population prior | 0.111 | — |
+| cf_1 (one CF solve) | 0.211 | −90% (worse) |
+| cf_5 | 0.177 | −59% (worse) |
+| **atcoder (0 CF solves)** | **0.072** | **+35%** |
+| **atcoder + cf_5 (seed + live-correct)** | **0.066** | **+40%** |
+
+**A brand-new Codeforces user's skill is estimated 35–40% more accurately from their AtCoder history than from the population prior — and better than their first several CF solves** (a few individual problem difficulties are noisy; AtCoder history is more data). Seed-then-correct (`atcoder+cf_k`) is best, realizing "seed cross-platform, correct live."
+
+**(B) Online convergence (n=1524):** live estimate MAE falls monotonically 0.108 (1 solve) → 0.081 (20 solves) — it corrects as evidence accrues.
+
+**This is the validated, positive cross-platform contribution:** collaborative transfer fails across disjoint problem sets, but **difficulty/skill transfer works** and is directly useful for cold-start skill calibration and difficulty-appropriate recommendation. Results in `data/adaptive_results.json`. Next: consolidation — significance tests, figures, report chapters, demo.

@@ -1,0 +1,24 @@
+{
+  "n_cold": 0,
+  "min_cf": 3,
+  "max_cf": 20,
+  "min_ac": 20,
+  "results": {
+    "popularity": {
+      "ndcg10": NaN,
+      "hit10": NaN
+    },
+    "cf_foldin": {
+      "ndcg10": NaN,
+      "hit10": NaN
+    },
+    "cross_nbr": {
+      "ndcg10": NaN,
+      "hit10": NaN
+    },
+    "hybrid": {
+      "ndcg10": NaN,
+      "hit10": NaN
+    }
+  }
+}

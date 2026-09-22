@@ -84,7 +84,27 @@ class ContentScorer:
 
         return (0.4 * topic_gap + 0.4 * diff_fit + 0.1 * self.popularity[None, :]).astype(np.float32)
 
-    def _user_difficulty_levels(self, sub: sp.csr_matrix) -> np.ndarray:
+    def score_all_match(self, train: sp.csr_matrix, user_rows: np.ndarray,
+                        stretch: float = 0.05) -> np.ndarray:
+        """
+        Difficulty-match + *familiar*-category scorer (the "assume they'd solve it"
+        bet): recommend problems at the user's level in categories they already
+        practise — the opposite of the pedagogical content scorer, and aligned
+        with how people actually pick their next problem.
+        """
+        sub = train[user_rows]
+        # Familiarity: prefer tags the user has solved a lot (not unseen ones).
+        tag_counts = (sub @ self.tag_matrix).toarray()                  # (U × n_tags)
+        familiar = (tag_counts @ self.tag_matrix.T) / self.tags_per_problem  # (U × P)
+        familiar /= (familiar.max(axis=1, keepdims=True) + 1e-9)
+
+        centers = self._user_difficulty_levels(sub, stretch=stretch)
+        z = (self._diff_filled[None, :] - centers[:, None]) / self.sigma
+        diff_fit = np.exp(-0.5 * z * z).astype(np.float32)
+
+        return (0.5 * diff_fit + 0.5 * familiar + 0.05 * self.popularity[None, :]).astype(np.float32)
+
+    def _user_difficulty_levels(self, sub: sp.csr_matrix, stretch: float | None = None) -> np.ndarray:
         """75th-percentile of each user's solved-problem difficulty, nudged by stretch."""
         centers = np.full(sub.shape[0], 0.3, dtype=np.float32)  # default for no-difficulty users
         indptr, indices = sub.indptr, sub.indices
@@ -94,4 +114,5 @@ class ContentScorer:
             diffs = diffs[~np.isnan(diffs)]
             if diffs.size:
                 centers[i] = np.percentile(diffs, 75)
-        return np.minimum(centers + self.stretch, 1.0)
+        s = self.stretch if stretch is None else stretch
+        return np.minimum(centers + s, 1.0)

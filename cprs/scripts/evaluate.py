@@ -104,12 +104,14 @@ def build_score_fns(model_names, train, problems):
 
     need_cf = any(m in model_names for m in ("cf", "hybrid", "hybrid_pop"))
     need_content = any(m in model_names for m in ("content", "hybrid"))
+    need_scorer = need_content or "diffmatch" in model_names
 
     cf_scores = content_scores = None
+    scorer = ContentScorer(problems) if need_scorer else None
     if need_cf:
         cf_scores = CollaborativeModel().fit(train).score_all(np.arange(n_users))
     if need_content:
-        content_scores = ContentScorer(problems).score_all(train, np.arange(n_users))
+        content_scores = scorer.score_all(train, np.arange(n_users))
 
     if "random" in model_names:
         rand = np.random.default_rng(42).random((n_users, n_problems), dtype=np.float32)
@@ -118,6 +120,9 @@ def build_score_fns(model_names, train, problems):
         fns["popularity"] = lambda u, P=pop: P
     if "content" in model_names:
         fns["content"] = lambda u, S=content_scores: S[u]
+    if "diffmatch" in model_names:
+        D = scorer.score_all_match(train, np.arange(n_users))
+        fns["diffmatch"] = lambda u, S=D: S[u]
     if "cf" in model_names:
         fns["cf"] = lambda u, S=cf_scores: S[u]
     if "hybrid" in model_names:
@@ -151,6 +156,8 @@ def main(model_names: list[str]) -> None:
 
     fns, density = build_score_fns(model_names, train, problems)
     results = {}
+    per_user_store = {}  # model -> per-user nDCG@10 (for significance tests / figures)
+    eval_rows = None
     for name in model_names:
         if name not in fns:
             logger.warning(f"unknown model '{name}', skipping")
@@ -158,6 +165,13 @@ def main(model_names: list[str]) -> None:
         logger.info(f"Evaluating '{name}'...")
         pu, rows = evaluate_model(fns[name], train, test)
         results[name] = aggregate(pu, rows, density)
+        per_user_store[name] = pu["ndcg@10"]
+        eval_rows = rows
+
+    # Persist per-user nDCG@10 + activity density for significance testing and plots.
+    if eval_rows is not None:
+        np.savez(INTERACTIONS_DIR / "per_user_ndcg.npz",
+                 rows=eval_rows, density=density[eval_rows], **per_user_store)
 
     # Overall table
     cols = ["hit@10", "precision@10", "recall@10", "mrr@10", "ndcg@10", "ndcg@20"]
