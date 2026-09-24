@@ -76,3 +76,21 @@ def fetch_user_submissions(user_id: str, from_second: int = 0) -> list:
 
     logger.info(f"Fetched {len(all_subs)} total submissions for '{user_id}'")
     return all_subs
+
+
+def fetch_user_contest_history(user_id: str) -> list:
+    """
+    Fetch a user's rated contest history.
+
+    Served by AtCoder itself rather than the kenkoooo mirror, which has no
+    rating-history endpoint. Each entry carries the contest, the placement,
+    the rating before/after and the performance for that round.
+    """
+    url = f"https://atcoder.jp/users/{user_id}/history/json"
+    logger.info(f"Fetching AtCoder contest history for '{user_id}'...")
+    time.sleep(REQUEST_DELAY)
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    history = resp.json()
+    logger.info(f"Fetched {len(history)} contest entries for '{user_id}'")
+    return history

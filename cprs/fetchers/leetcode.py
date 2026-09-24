@@ -148,3 +148,40 @@ def fetch_all_problems() -> list:
 
     logger.info(f"Fetched {len(all_problems)} LeetCode problems")
     return all_problems
+
+
+CONTEST_QUERY = """
+query userContestRankingInfo($username: String!) {
+  userContestRanking(username: $username) {
+    attendedContestsCount
+    rating
+    globalRanking
+    totalParticipants
+    topPercentage
+  }
+  userContestRankingHistory(username: $username) {
+    attended
+    rating
+    ranking
+    trendDirection
+    problemsSolved
+    totalProblems
+    finishTimeInSeconds
+    contest { title startTime }
+  }
+}
+"""
+
+
+def fetch_user_contest_history(username: str) -> dict:
+    """
+    Fetch a user's contest rating summary and per-contest history.
+
+    Returns {"summary": {...}, "history": [...]} where history holds only the
+    contests the user actually attended.
+    """
+    logger.info(f"Fetching LeetCode contest history for {username}...")
+    data = _graphql(CONTEST_QUERY, {"username": username})
+    history = [h for h in (data.get("userContestRankingHistory") or []) if h.get("attended")]
+    logger.info(f"Fetched {len(history)} attended contests for {username}")
+    return {"summary": data.get("userContestRanking") or {}, "history": history}
