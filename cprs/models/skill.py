@@ -3,7 +3,7 @@ Online cross-platform skill estimator.
 
 Realizes the "unify on difficulty, assume solvability, correct live" idea. A
 user's skill is tracked on the unified [0,1] difficulty scale (validated to be
-cross-platform-consistent at r=0.77, see DECISIONS_LOG) by a stochastic-
+cross-platform-consistent at r=0.77) by a stochastic-
 approximation quantile tracker: each solved problem nudges the estimate toward
 the q-th percentile of the difficulties the user solves. This is:
 

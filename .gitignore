@@ -12,10 +12,19 @@ cprs/data/*.db
 cprs/data/*.db-shm
 cprs/data/*.db-wal
 
+# Personal working notes — build planning, research log, exam prep.
+# Private scratch material, not part of the submitted project.
+cprs/DECISIONS_LOG.md
+cprs/FINAL_PROJECT_PLAN.md
+cprs/EXAM_PREP.md
+
 # Copyrighted University of London course materials (exam papers, templates, rubric)
 *.pdf
 rubric/
 preliminary_report_requirements.txt
+
+# Derived report statistics — regenerable from the dataset via scripts/report_stats.py
+cprs/data/report_stats.json
 
 # LaTeX build artifacts (report PDF is regenerable from the .tex source)
 *.aux
