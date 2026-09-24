@@ -38,12 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from models.collaborative import CollaborativeModel
 from models.content import ContentScorer
 from models.hybrid import HybridModel
+from models.metrics import METRICS, idcg_table, rank_metrics
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 INTERACTIONS_DIR = DATA_DIR / "interactions"
 K_LIST = [5, 10, 20]
 KMAX = max(K_LIST)
-METRICS = ("hit", "precision", "recall", "mrr", "ndcg")
 # activity buckets by number of training solves
 BUCKETS = [("low[5,20)", 5, 20), ("med[20,100)", 20, 100), ("high[100+)", 100, 10 ** 9)]
 console = Console()
@@ -63,7 +63,7 @@ def evaluate_model(score_fn, train: sp.csr_matrix, test: list[np.ndarray]):
     """Return (per_user_metrics dict of arrays, evaluated_user_rows array)."""
     n_users = train.shape[0]
     indptr, indices = train.indptr, train.indices
-    idcg = {k: np.cumsum(1.0 / np.log2(np.arange(2, k + 2))) for k in K_LIST}
+    idcg = idcg_table(K_LIST)
     cols = [f"{m}@{k}" for k in K_LIST for m in METRICS]
     per_user = {c: [] for c in cols}
     eval_rows = []
@@ -73,24 +73,15 @@ def evaluate_model(score_fn, train: sp.csr_matrix, test: list[np.ndarray]):
         if rel.size == 0:
             continue
         eval_rows.append(u)
-        scores = score_fn(u).copy()
-        scores[indices[indptr[u]:indptr[u + 1]]] = -np.inf  # mask already-solved
-
-        top = np.argpartition(-scores, KMAX)[:KMAX]
-        top = top[np.argsort(-scores[top])]
-        rel_set = set(rel.tolist())
-        hit_flags = np.array([1.0 if p in rel_set else 0.0 for p in top])
-        first_hit = int(np.argmax(hit_flags)) if hit_flags.any() else -1
-
-        for k in K_LIST:
-            hk = hit_flags[:k]
-            n_hit = hk.sum()
-            per_user[f"hit@{k}"].append(1.0 if n_hit > 0 else 0.0)
-            per_user[f"precision@{k}"].append(n_hit / k)
-            per_user[f"recall@{k}"].append(n_hit / rel.size)
-            per_user[f"mrr@{k}"].append(1.0 / (first_hit + 1) if 0 <= first_hit < k else 0.0)
-            dcg = (hk / np.log2(np.arange(2, k + 2))).sum()
-            per_user[f"ndcg@{k}"].append(dcg / idcg[k][min(rel.size, k) - 1])
+        m = rank_metrics(
+            score_fn(u),
+            seen=indices[indptr[u]:indptr[u + 1]],  # mask already-solved
+            relevant=rel,
+            k_list=K_LIST,
+            idcg=idcg,
+        )
+        for c in cols:
+            per_user[c].append(m[c])
 
     return {c: np.array(v) for c, v in per_user.items()}, np.array(eval_rows)
 
