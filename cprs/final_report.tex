@@ -98,13 +98,27 @@ Competitive programming has grown into a global educational practice. Platforms 
 as Codeforces, AtCoder and LeetCode collectively host millions of algorithmic problems
 and serve tens of millions of users~\cite{wasik2018}, functioning both as training
 grounds for algorithmic reasoning and as \emph{de-facto} assessment instruments in
-technical hiring~\cite{liang2021}. Their very scale, however, creates a discovery
+technical hiring, where developers report that preparation centres on exactly this kind
+of timed algorithmic problem~\cite{behroozi2019}. Their very scale, however, creates a discovery
 problem: a learner must repeatedly decide \emph{which problem to attempt next} from a
 space of thousands, usually by trial and error or informal peer advice rather than
 systematic, personalised guidance. Because timely, well-targeted feedback is central
 to skill acquisition~\cite{boud2013}, this is a genuine educational deficiency, not a
 mere convenience gap; yet platforms surface only coarse aggregate statistics (a rating,
 a solve count) and no actionable problem-level direction.
+
+The scale of that decision is worth making concrete, because it is easy to underestimate.
+In the unified catalogue assembled for this project (Section~\ref{sec:design-data}),
+$1{,}685$ problems sit within $\pm0.05$ of the median learner's skill on the normalised
+difficulty scale --- that is, roughly seventeen hundred problems are all plausibly
+``the right level'' at any given moment, before topic, style or novelty are considered at
+all. A learner cannot inspect that set, so in practice they sample from a small, biased
+corner of it: in our interaction data the most-solved tenth of problems absorbs
+$51\%$ of all solve events, while the median problem is solved by just $23$ of $2{,}459$
+users. The consequence is not merely inefficiency but systematic distortion --- practice
+concentrates on whatever is visible rather than on whatever would most improve the
+learner. This is the discovery problem the project sets out to address, and it is
+precisely the shape of problem that personalised ranking exists to solve.
 
 The difficulty is compounded by \emph{fragmentation}. Each platform operates as an
 island with its own difficulty scale, tag taxonomy and user base. A learner practising
@@ -272,12 +286,40 @@ operationalises. Crucially, ability in these frameworks is a property of the
 item co-occurrence, transfers across platforms.
 
 \subsection{Recommendation in Programming Education}
-Single-platform tools exist as community projects --- topic ladders, weakness finders
-and rating predictors~\cite{ahmed2023} --- and academic work has recommended problems on
-individual online judges~\cite{zhang2019}, typically using one public dataset and a
-single accuracy metric. None unifies behaviour \emph{across} platforms, and,
-importantly, none tests whether cross-platform history is actually useful. That
-untested assumption is the gap this project targets.
+Recommendation for online judges is a small but established literature, and two studies
+are especially close to this project. Yera Toledo et al.~\cite{yera2018} recommend
+problems on a programming online judge by modelling problem difficulty and learner
+ability as fuzzy quantities, and report that difficulty-aware recommendation beats
+difficulty-agnostic collaborative filtering. Their result is an early signal that
+\emph{ability} is the load-bearing construct in this domain --- a conclusion our own
+evidence reaches from an entirely different direction (Section~\ref{sec:results}), and
+which we extend by showing that ability is also the quantity that survives a change of
+platform. Zhao et al.~\cite{zhao2018} jointly infer problem \emph{topics} and
+\emph{difficulty levels} from online-judge submission logs with a unified probabilistic
+model, establishing that metadata a platform never published can be recovered from the
+data it does expose. Our NLP tagger (Section~\ref{sec:tagger}) attacks the same
+metadata-scarcity problem from the complementary direction --- problem statements rather
+than behaviour logs --- and our per-tag analysis contributes a finding their aggregate
+figures cannot show: \emph{which} labels are recoverable from text at all, and why a
+whole class of them is not.
+
+Two limitations run through this work, and together they define our opening. First, it
+is uniformly \emph{single-platform}. Each system is trained and evaluated on one judge,
+so neither the portability of its constructs nor the value of aggregating evidence
+across judges is ever put to the test; cross-platform benefit is left as an assumption
+that no one has had the data to check. Second, evaluation tends to be narrow --- one
+dataset, one or two accuracy metrics, and frequently no strong non-personalised
+reference point --- which is precisely the practice that Cremonesi et
+al.~\cite{cremonesi2010} and Dacrema et al.~\cite{dacrema2019} identify as a source of
+overstated progress in recommender research generally. Outside academia the picture is
+weaker still: the tools competitive programmers actually use day to day are community
+projects (topic ladders, weakness finders, rating predictors) that are heuristic,
+undocumented and, as far as we can establish, never evaluated against a baseline at all.
+The result is a domain in which practice is already cross-platform --- learners routinely
+hold accounts on several judges --- while neither the literature nor the tooling has
+measured whether crossing platforms actually helps. That untested assumption is the gap
+this project targets, and Section~\ref{sec:results-xplat} shows that testing it
+overturns the obvious answer.
 
 \subsection{Evaluation Methodology and its Pitfalls}
 Offline top-$N$ evaluation is standard but subtle. Ranking quality is measured with hit
@@ -582,11 +624,18 @@ step as the project progressed.
 %======================================================================
 
 \subsection{Motivation}
-AtCoder publishes \emph{no} topic tags, leaving $9{,}095$ problems ($37\%$ of the
-catalogue) without topic metadata, whereas Codeforces ($98\%$) and LeetCode ($97\%$) are
-richly tagged. Topic-based analysis and topic-gap recommendation are therefore impossible
-on the AtCoder slice unless the tags are inferred. We frame this as cross-platform
-\emph{label} transfer.
+AtCoder publishes \emph{no} topic tags. Its problems do carry labels, but they are
+contest-series identifiers (\texttt{abc}, \texttt{arc}) that say when a problem was set,
+not what it is about; measured against the canonical taxonomy, topic coverage on AtCoder
+is exactly $0\%$ of $9{,}095$ problems, against $96.2\%$ on Codeforces and $88.6\%$ on
+LeetCode. Over a third of the unified catalogue ($9{,}204$ problems, $37.8\%$) therefore
+carries no usable topic metadata, and it is not a random third --- it is one entire
+platform. Any topic-based analysis, any topic-gap recommendation, and any attempt to
+compare a user's topic profile across platforms is impossible on that slice unless the
+tags are inferred. We frame this as cross-platform \emph{label} transfer: exploit a
+richly-labelled platform to annotate an unlabelled one. The task is a close relative of
+Zhao et al.'s~\cite{zhao2018} recovery of topics and difficulty from submission logs,
+but uses the complementary signal --- the problem statement itself.
 
 \subsection{Approach}
 A multi-label classifier is trained on Codeforces problem statements, which carry
@@ -651,10 +700,22 @@ assigns tags to $775/795$ ($97.5\%$), averaging $1.9$ tags each, with the predic
 distribution dominated by content tags as expected.
 
 \subsection{Limitations}
-Only $16\%$ of targeted AtCoder pages were reachable due to anti-scraping protections; a
-production system would use a cached corpus (e.g.\ IBM CodeNet) or authenticated,
-throttled access. The tagger is also confined to the sixteen most frequent tags, where
-support is sufficient.
+The honest headline is that the method works better than its deployment does. Only $16\%$
+of targeted AtCoder pages were reachable behind the platform's anti-scraping protections,
+so although the tagger labels $97.5\%$ of the statements it can see, catalogue-level
+AtCoder topic coverage rises only from $0\%$ to $8.5\%$ ($775$ of $9{,}095$ problems).
+The bottleneck is therefore \emph{corpus access}, not modelling: a production system
+would use a cached statement corpus (e.g.\ IBM CodeNet) or authenticated, throttled
+access, and the same trained model would then annotate the remaining $8{,}320$ problems
+without any change. A second limitation is intrinsic rather than logistical --- the
+two-tier finding above means that even with full corpus access, method tags would remain
+poorly recovered from text alone. Finally, the tagger is confined to the sixteen most
+frequent tags, below which Codeforces training support becomes too thin to estimate a
+reliable decision threshold; rarer topics would need either more training data or a
+hierarchical model that borrows strength from related tags. A knock-on consequence for
+the wider project is that AtCoder difficulty, too, is incomplete: only $51.7\%$ of
+AtCoder problems carry a community difficulty estimate, which bounds how much of that
+platform the difficulty-matching scorer can reach.
 
 %======================================================================
 \section[Evaluation Methodology \textnormal{\small(262 words)}]{Evaluation Methodology}
@@ -958,7 +1019,7 @@ not a next-solve predictor.
 
 \subsection{Comparison to Prior Work}
 Where prior programming-problem recommenders report a single metric on a single
-platform~\cite{zhang2019}, this work contributes a multi-model, multi-metric,
+platform~\cite{yera2018,zhao2018}, this work contributes a multi-model, multi-metric,
 significance-tested comparison on a curated cross-platform dataset, and --- unlike systems
 that assume cross-platform aggregation is beneficial --- measures it and finds the benefit
 lies in ability transfer rather than collaborative transfer, consistent with cross-domain
@@ -1076,8 +1137,9 @@ $\to$ \texttt{eval\_crossplatform.py} $\to$ \texttt{eval\_adaptive.py}; figures:
 A Survey on Online Judge Systems and Their Applications. \emph{ACM Computing Surveys} 51,
 1 (2018), 1--34.
 
-\bibitem{liang2021} P. Liang, et al. 2021. Competitive Programming and Technical Hiring:
-Signals and Pitfalls. In \emph{Proc.\ SIGCSE}. ACM, 1--7.
+\bibitem{behroozi2019} M. Behroozi, C. Parnin, and T. Barik. 2019. Hiring is Broken: What
+Do Developers Say About Technical Interviews? In \emph{Proc.\ IEEE Symposium on Visual
+Languages and Human-Centric Computing (VL/HCC)}. IEEE, 1--5.
 
 \bibitem{boud2013} D. Boud and E. Molloy. 2013. Rethinking Models of Feedback for
 Learning. \emph{Assessment \& Evaluation in Higher Education} 38, 6 (2013), 698--712.
@@ -1131,12 +1193,13 @@ Arco Publishing.
 \bibitem{vygotsky1978} L. S. Vygotsky. 1978. \emph{Mind in Society: The Development of
 Higher Psychological Processes}. Harvard University Press.
 
-\bibitem{ahmed2023} F. Ahmed and R. Karim. 2023. Community Tools for Competitive
-Programming Practice: A Review. \emph{Journal of Educational Technology} 19, 2 (2023),
-44--61.
+\bibitem{yera2018} R. Yera Toledo, Y. Caballero Mota, and L. Mart\'{\i}nez. 2018. A
+Recommender System for Programming Online Judges Using Fuzzy Information Modeling.
+\emph{Informatics} 5, 2 (2018), Article 17.
 
-\bibitem{zhang2019} Y. Zhang, et al. 2019. Problem Recommendation for Online Judge Systems.
-\emph{IEEE Access} 7 (2019), 128--139.
+\bibitem{zhao2018} W. X. Zhao, W. Zhang, Y. He, X. Xie, and J.-R. Wen. 2018.
+Automatically Learning Topics and Difficulty Levels of Problems in Online Judge Systems.
+\emph{ACM Transactions on Information Systems} 36, 3 (2018), Article 27, 33 pages.
 
 \bibitem{jarvelin2002} K. J\"arvelin and J. Kek\"al\"ainen. 2002. Cumulated Gain-based
 Evaluation of IR Techniques. \emph{ACM Transactions on Information Systems} 20, 4 (2002),
