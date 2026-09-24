@@ -89,7 +89,7 @@ benefit.
 \pagenumbering{arabic}
 
 %======================================================================
-\section[Introduction \textnormal{\small(804 words)}]{Introduction}
+\section[Introduction \textnormal{\small(1,014 words)}]{Introduction}
 \label{sec:intro}
 %======================================================================
 
@@ -221,7 +221,7 @@ Section~\ref{sec:conclusion} concludes. Appendices give full metric tables,
 hyperparameters, the taxonomy and reproduction instructions.
 
 %======================================================================
-\section[Literature Review \textnormal{\small(703 words)}]{Literature Review}
+\section[Literature Review \textnormal{\small(1,378 words)}]{Literature Review}
 \label{sec:lit}
 %======================================================================
 
@@ -254,14 +254,38 @@ targets.
 \subsection{Cross-Domain and Transfer Recommendation}
 Directly relevant to this project is \emph{cross-domain} recommendation, which seeks to
 transfer knowledge from a source domain (here, one platform) to improve a target
-domain~\cite{cantador2015}. Transfer can operate over shared \emph{users},
-shared \emph{items}, or a shared \emph{latent space}~\cite{pan2010}. The
-competitive-programming setting is an unusually clean instance: platforms share
-\emph{users} (via reused handles) but almost no \emph{items} (problem sets are
-disjoint). The literature warns that when the overlap is on users rather than items,
-naive joint factorisation may fail to align the two domains' latent
-spaces~\cite{cantador2015} --- exactly the failure we observe for collaborative
-transfer, and the reason we turn to a shared \emph{ability} construct instead.
+domain~\cite{cantador2015}. Cantador et al.\ organise the field by what the domains have
+in common, and the distinction turns out to be decisive for our results. Transfer may
+proceed over shared \emph{items} (the same films rated on two sites), shared
+\emph{users} (the same person active in two domains), or a shared \emph{latent space}
+inferred by tying the two factorisations together~\cite{pan2010}. Pan et al.\ show that
+when neither users nor items overlap, transfer must instead move a \emph{rating pattern}
+--- a compressed regularity abstracted away from the specific entities --- and that the
+success of the transfer depends entirely on whether such a shared regularity genuinely
+exists rather than on the machinery used to move it.
+
+The competitive-programming setting is an unusually clean instance of the user-overlap
+case, and this is what makes it a good testbed. Platforms share \emph{users}, because
+competitive programmers commonly reuse a handle across judges, but they share almost no
+\emph{items}: a Codeforces problem and an AtCoder problem are distinct artefacts, and the
+catalogues do not intersect at all. The literature is explicit that this is the harder
+configuration. With no shared items there is no anchor forcing the two domains' latent
+spaces into a common frame, so a naive joint factorisation is free to place each domain's
+factors in whatever subspace best explains its own observations, and the resulting
+geometry need not be comparable across domains~\cite{cantador2015,pan2010}. Our Design~A
+and~B experiments (Section~\ref{sec:results-xplat}) reproduce exactly this failure, and
+we regard that as a confirmation of the theory rather than a defect of the
+implementation.
+
+What the theory also suggests, read carefully, is the way out. If transfer requires a
+shared regularity that is not tied to particular items, then the productive question is
+which construct in this domain has that property. Item co-occurrence plainly does not:
+it is defined over a catalogue, and the catalogues are disjoint. \emph{Ability}, by
+contrast, is a property of the learner that the knowledge-tracing literature below treats
+as existing independently of any particular item set --- which makes it precisely the kind
+of domain-independent regularity Pan et al.\ describe. That observation is what redirects
+this project from collaborative transfer to skill transfer, and
+Section~\ref{sec:results-xplat} shows it is empirically correct.
 
 \subsection{Sequence- and Session-Aware Recommendation}
 Because a learner's next choice depends on recent activity, session-based recommenders
@@ -367,7 +391,7 @@ cross-platform skill estimator (\S\ref{sec:design-skill}) \\
 \end{table}
 
 %======================================================================
-\section[Requirements and Design \textnormal{\small(802 words)}]{Requirements and Design}
+\section[Requirements and Design \textnormal{\small(1,036 words)}]{Requirements and Design}
 \label{sec:design}
 %======================================================================
 
@@ -506,6 +530,83 @@ solvability model $P(\text{solve})=\sigma\!\big(s(\theta-b)\big)$ then supports
 difficulty-appropriate recommendation and the ``assume solvability, correct live''
 behaviour.
 
+\subsection{The Cold-Start Policy in One Picture}
+\label{sec:design-coldstart}
+Because cold start is where the three mechanisms above interact --- and because it is the
+design question the evaluation ultimately reshaped --- Figure~\ref{fig:policy} states the
+serving policy explicitly. The figure shows the design \emph{as finally justified by the
+evidence} (Sections~\ref{sec:results}--\ref{sec:results-xplat}); the smooth density ramp
+of Equation~\ref{eq:skill}'s neighbouring blend was our original proposal, and
+Section~\ref{sec:results} explains why a near-hard switch replaced it.
+
+Three points are worth drawing out. First, the branch is on \emph{native} interaction
+count, not total activity: a user may be rich in evidence globally and still cold on the
+platform being recommended from. Second, the cold branch is not a single fallback but an
+ordered preference --- a cross-platform skill prior when one is available, and only
+otherwise the non-personalised popularity list; this ordering is exactly what \RQ{4}
+tests. Third, the loop at the bottom is the ``correct live'' behaviour: every solve, on
+any platform, updates the same skill estimate, so a user's cold period is measured in
+single interactions rather than sessions.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners, align=center, inner sep=3pt,
+                minimum height=7mm, text width=30mm, fill=cprsblue!8},
+    warm/.style={box, fill=cprsblue!16},
+    cold/.style={box, fill=cprsgreen!14},
+    dec/.style={draw, rounded corners=1pt, align=center, font=\scriptsize,
+                inner sep=3pt, text width=30mm, fill=white},
+    arr/.style={-{Stealth[length=2mm]}, cprsgrey, thick},
+    lbl/.style={font=\scriptsize, cprsgrey, inner sep=1.5pt}]
+
+  \node[box] (prof) at (0,0)      {cross-platform user profile};
+  \node[dec] (d1)   at (0,-1.45)  {native solves $n_u$ on target platform?};
+
+  % ---- cold path (left) ----
+  \node[dec]  (d2)    at (-4.1,-3.1) {other-platform history?};
+  \node[cold] (prior) at (-6.0,-4.8) {skill prior $\theta_0$};
+  \node[box]  (pop)   at (-2.2,-4.8) {popularity list};
+  \node[cold] (rank)  at (-4.1,-6.5) {difficulty-calibrated ranking};
+
+  % ---- warm path (right) ----
+  \node[warm] (als) at (4.1,-3.1) {ALS fold-in $\to x_u$};
+  \node[warm] (cfs) at (4.1,-4.8) {CF score $x_u^{\top} y_p$};
+
+  \node[box, text width=36mm] (out) at (0,-8.0) {top-$K$ problem list};
+  \node[cold] (upd) at (0,-9.5) {online skill update (Eq.~\ref{eq:skill})};
+
+  \draw[arr] (prof) -- (d1);
+  \draw[arr] (d1.west) -| (d2.north);
+  \draw[arr] (d1.east) -| (als.north);
+  \draw[arr] (d2.west) -| (prior.north);
+  \draw[arr] (d2.east) -| (pop.north);
+  \draw[arr] (prior.south) |- (rank.west);
+  \draw[arr] (pop.south)   |- (rank.east);
+  \draw[arr] (als) -- (cfs);
+  \draw[arr] (rank.south) |- (out.west);
+  \draw[arr] (cfs.south)  |- (out.east);
+  \draw[arr] (out) -- (upd);
+
+  % branch labels, placed explicitly to keep them off the routed lines
+  \node[lbl] at (-2.85,-1.18) {$n_u=0$};
+  \node[lbl] at ( 2.85,-1.18) {$n_u\geq1$};
+  \node[lbl] at (-6.45,-3.75) {yes};
+  \node[lbl] at (-1.75,-3.75) {no};
+
+  % online correction loop, routed clear of every box on the right
+  \draw[arr] (upd.east) -- ++(1.2,0) -- (6.6,-9.5) -- (6.6,0) -- (prof.east);
+  \node[lbl, fill=white, inner sep=2pt] at (6.6,-6.0)
+        {\rotatebox{90}{each solve, any platform}};
+\end{tikzpicture}
+\caption{Serving policy. The branch is on \emph{native} interaction count, so a user
+experienced elsewhere but new here still takes the cold path --- where a cross-platform
+skill prior is preferred to popularity. Every solve, on any platform, feeds the same
+online skill estimate.}
+\label{fig:policy}
+\end{figure}
+
 \subsection{Design Decisions and Alternatives}
 Several decisions were made against alternatives and are worth recording. Template 1.1
 (Data Science) was chosen over the web-design template because the project's centre of
@@ -518,19 +619,51 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(625 words)}]{Implementation}
+\section[Implementation \textnormal{\small(1,562 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
 \subsection{Technology Stack and Software Structure}
-The system is implemented in Python 3. Data science uses NumPy, SciPy (sparse matrices),
-scikit-learn (TF--IDF, logistic regression, SVD) and the \texttt{implicit} library for
-ALS; the web application uses FastAPI with a SQLite backend; figures use Matplotlib.
-Code is organised into \texttt{fetchers/} (one module per platform), \texttt{models/}
-(recommenders and the skill estimator), and \texttt{scripts/} (reproducible pipeline
-stages: acquisition, matrix construction, splitting, evaluation, significance,
-figures). Each model is a small module exposing a scoring function, which is what makes
-the uniform six-model comparison possible.
+The system is implemented in Python 3 across $32$ modules and approximately $5{,}200$
+lines of code. Data science uses NumPy, SciPy (sparse matrices), scikit-learn (TF--IDF,
+logistic regression, SVD) and the \texttt{implicit} library for ALS; the web application
+uses FastAPI with a SQLite backend; figures use Matplotlib. Table~\ref{tab:structure}
+summarises the layout.
+
+\begin{table}[h]
+\centering
+\caption{Software structure. The pipeline is deliberately script-driven: each stage is a
+separate entry point writing a versioned artefact, so any stage can be re-run in
+isolation.}
+\label{tab:structure}
+\small
+\begin{tabularx}{\textwidth}{@{}lrX@{}}
+\toprule
+\textbf{Package} & \textbf{Lines} & \textbf{Responsibility} \\
+\midrule
+\texttt{fetchers/} & 299 & One module per platform (Codeforces, AtCoder, LeetCode);
+each exposes the same \texttt{fetch\_user\_submissions} interface, hiding three very
+different APIs behind one signature. \\
+\texttt{models/} & 1{,}333 & Recommenders (\texttt{content}, \texttt{collaborative},
+\texttt{hybrid}), the online skill estimator, the unified schema and the serving
+engine. \\
+\texttt{scripts/} & 3{,}315 & 21 pipeline stages: acquisition, dataset construction,
+splitting, the six-model evaluation, significance testing, cold-start and
+cross-platform studies, figures and reported statistics. \\
+\texttt{app.py} & 286 & FastAPI application: auth, handle management, live
+cross-platform profile assembly and the recommendation endpoint. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+One structural decision did more work than any other. Every recommender implements the
+same contract --- given a user index and the training matrix, return a dense score vector
+over all candidate problems --- so the evaluation harness is model-agnostic. Adding
+\texttt{diffmatch} as a fifth model during the investigation of the content result
+(Section~\ref{sec:results}) required writing a scoring function and adding one name to a
+list; no evaluation code changed. That uniformity is what made it cheap to keep asking
+new questions of the data, and it is the main reason the comparison spans six models
+rather than the two originally planned.
 
 \subsection{Data Acquisition}
 Problem catalogues are fetched once per platform. Codeforces submissions come from
@@ -586,14 +719,53 @@ need not be the same person, and some users differ --- and is treated as a state
 limitation (Section~\ref{sec:threats}).
 
 \subsection{Model Implementations}
-The CF module wraps \texttt{implicit} ALS with $64$ factors, regularisation $0.05$,
-$20$ iterations and confidence scale $\alpha=15$ (Appendix~\ref{app:hyper}), with a
-TruncatedSVD fallback so the pipeline never hard-depends on a native build. The skill
-estimator is a $\sim$40-line online class implementing Equation~\ref{eq:skill}, seedable
-from any platform's history. The content scorer precomputes per-problem difficulty,
-popularity and a sparse tag matrix, then vectorises scoring across users. Cold-start
-fold-in reuses the trained item factors and solves a $64\times64$ ridge system per user
-to obtain a factor from a handful of observed items.
+\label{sec:impl-models}
+The CF module wraps \texttt{implicit} ALS with $64$ factors, regularisation $0.05$, $20$
+iterations and confidence scale $\alpha=15$ (Appendix~\ref{app:hyper}). Because
+\texttt{implicit} requires a compiled native extension, the module also carries a
+TruncatedSVD fallback behind the same interface, so the pipeline degrades to a pure-Python
+path rather than failing outright on a machine without a working build toolchain --- a
+small piece of defensive engineering that made the results reproducible on a second
+machine without intervention.
+
+Three implementation details are worth setting out, because they are where the real
+difficulty lay.
+
+\paragraph{Vectorised scoring.} Scoring $2{,}459$ users against $7{,}568$ problems for six
+models at three cut-offs is $\sim$$112$ million user--item evaluations per full run, and
+the evaluation was re-run many times as the investigation developed. A per-user Python
+loop over problems is hopelessly slow at that scale, so the content scorer precomputes
+per-problem difficulty, log-popularity and a sparse problem$\times$tag matrix once, then
+computes topic affinity for a whole batch of users as a single sparse matrix product;
+the remaining difficulty-fit term is a vectorised Gaussian. CF scoring is a dense
+$X Y^{\top}$ product. This turns a full six-model evaluation into a couple of minutes
+rather than hours, which is what made the iterative, hypothesis-driven style of
+Section~\ref{sec:results} practical at all.
+
+\paragraph{Cold-start fold-in.} Simulating a user with only $k$ observed solves requires
+a user factor that was \emph{not} learned during training, or the experiment leaks. We
+therefore freeze the item factors $Y$ from the full fit and solve the ALS user-step in
+isolation for the observed set $\mathcal{O}$:
+\[
+x \;=\; \big(\alpha\,Y_{\mathcal{O}}^{\top} Y_{\mathcal{O}} + \lambda I\big)^{-1}
+        \alpha\,Y_{\mathcal{O}}^{\top}\mathbf{1},
+\]
+a $64\times64$ ridge system per probe user --- cheap enough ($O(f^3)$ with $f=64$, plus
+$O(kf^2)$ to form the Gram matrix) to run for $1{,}976$ probe users across seven history
+sizes. At $k=0$ the system degenerates to $x=0$, which is why CF scores collapse to a
+constant and the model reduces to random ordering; this is a genuine property of the
+method, not an artefact of the simulation.
+
+\paragraph{The online skill estimator.} Equation~\ref{eq:skill} is implemented as a
+$\sim$40-line class holding two floats. \texttt{update()} is a single comparison and one
+addition --- $O(1)$ per solve with $O(1)$ memory, so it can run in the request path --- while
+\texttt{seed()} initialises $\theta$ to the empirical $q$-quantile of \emph{any} supplied
+difficulty history, which is the mechanism by which an AtCoder history becomes a
+Codeforces prior. Because the two entry points write the same state, seeding and live
+correction compose without special-casing, and the \texttt{atcoder+cf\_5} condition of
+Section~\ref{sec:results-xplat} is literally a \texttt{seed()} call followed by five
+\texttt{update()} calls. The estimate is clipped to $[0,1]$ so that a pathological history
+cannot push it off the difficulty scale.
 
 \subsection{Web Application}
 \label{sec:impl-web}
@@ -601,8 +773,56 @@ A FastAPI application serves the system live. It exposes registration, login/log
 session endpoints (\texttt{/api/register}, \texttt{/api/login}, \texttt{/api/logout},
 \texttt{/api/me}), platform-handle management (\texttt{/api/handles}), a recommendation
 endpoint (\texttt{/api/recommend}) and catalogue statistics (\texttt{/api/stats}). A
-SQLite schema stores \texttt{users} (salted SHA-256 password hashes), \texttt{platform\_handles}
-and \texttt{sessions} (cookie tokens); the credential database is never committed. On a
+SQLite schema (Figure~\ref{fig:er}) stores \texttt{users} (salted SHA-256 password
+hashes), \texttt{platform\_handles} and \texttt{sessions} (cookie tokens); the credential
+database is never committed. The schema is deliberately minimal, and the reason is a
+design position rather than an omission: CPRS stores \emph{identity}, not behaviour. A
+user's solve history is re-fetched from the origin platforms on demand rather than
+mirrored locally, so the application holds no copy of anyone's submission record, cannot
+drift out of date with the judges, and has nothing to leak beyond a handle that is
+already public. The \texttt{UNIQUE(user\_id, platform)} constraint enforces the one
+sensible cardinality --- at most one handle per platform per account --- at the schema level
+instead of in application code.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    font=\small,
+    ent/.style={draw, rounded corners, align=left, inner sep=5pt, fill=cprsblue!8},
+    arr/.style={-{Stealth[length=2mm]}, cprsgrey, thick},
+    lbl/.style={font=\scriptsize, cprsgrey}]
+
+  \node[ent] (u) at (0,0) {%
+    {\bfseries users}\\[2pt]
+    \underline{id} \;\textsc{integer pk}\\
+    username \;\textsc{text unique}\\
+    password\_hash \;\textsc{text}\\
+    salt \;\textsc{text}\\
+    created\_at \;\textsc{timestamp}};
+
+  \node[ent] (h) at (6.8,1.35) {%
+    {\bfseries platform\_handles}\\[2pt]
+    \underline{id} \;\textsc{integer pk}\\
+    user\_id \;\textsc{fk} $\to$ users\\
+    platform \;\textsc{text}\\
+    handle \;\textsc{text}\\
+    verified \;\textsc{integer}};
+
+  \node[ent] (s) at (6.8,-1.75) {%
+    {\bfseries sessions}\\[2pt]
+    \underline{token} \;\textsc{text pk}\\
+    user\_id \;\textsc{fk} $\to$ users\\
+    created\_at \;\textsc{timestamp}};
+
+  \draw[arr] (u.east) -- node[lbl, above, pos=0.65] {1 : N} (h.west);
+  \draw[arr] (u.east) -- node[lbl, above, pos=0.65] {1 : N} (s.west);
+\end{tikzpicture}
+\caption{Database schema. Only identity is persisted --- solve histories are re-fetched
+from the origin platforms on each request rather than mirrored.}
+\label{fig:er}
+\end{figure}
+
+On a
 recommendation request the app fetches the user's recent submissions across their linked
 platforms, merges them into a single profile (unioning solved sets, combining per-topic
 mastery, taking the max rating), analyses recent-performance trend, and returns ranked
@@ -616,10 +836,46 @@ Every result in this report is regenerable from committed raw data by a fixed se
 scripts (Appendix~\ref{app:repro}); random seeds are fixed for sampling, ALS and
 bootstrap. Derived artefacts (matrices, splits, metrics, figures) are produced
 deterministically, and the decisions log records the rationale and results of each major
-step as the project progressed.
+step as the project progressed. Freezing the raw solve events on disk matters more here
+than it might elsewhere: a Codeforces user's history grows continuously, so an evaluation
+that re-fetched from the API would silently change its own test set between runs and no
+two numbers in this report would be comparable.
+
+\subsection{Verification and Correctness}
+\label{sec:impl-testing}
+Correctness in a pipeline of this kind is mostly a question of whether a surprising number
+is a finding or a bug, and the project leaned on four habits rather than on a formal test
+suite.
+
+\emph{Baselines as assertions.} A \texttt{random} model is carried through every
+experiment specifically as a lower-bound sanity check. Its scores behave exactly as
+theory predicts (\ndcg{}@10 $=0.0012$, and $\approx K/|\mathcal{C}|$ for HitRate@$K$),
+which is a continuous check that the ranking, masking and metric code are not silently
+broken --- if the harness were mis-wired, random would not sit where arithmetic says it
+should. \emph{Leakage checks.} Every model's training solves are masked before ranking,
+and the fold-in experiments use item factors fitted without the probe user's held-out
+items; the $k=0$ degeneracy ($x=0$) was traced analytically to confirm it was the
+method's behaviour and not an indexing error. \emph{Adversarial re-testing of surprises.}
+The two counter-intuitive results were each re-examined before being believed: the
+content model's chance-level performance was diagnosed by building an opposed scorer
+(\texttt{diffmatch}) and confirming it moved the metric five-fold in the predicted
+direction, and the cross-platform transfer failure was re-tested under three independent
+designs before being accepted. \emph{Regenerability as a regression test.} Because the
+whole pipeline is deterministic under fixed seeds, re-running it after a change and
+diffing the metric JSON detects unintended effects; the statistics quoted in this report
+are themselves regenerated by \texttt{report\_stats.py} rather than transcribed, which
+caught two figures that had drifted from the data during drafting.
+
+It should be stated plainly that this is weaker than a unit-test suite. There is no
+automated test target, so the guarantees above are procedural rather than enforced, and a
+regression would be caught only when a stage was next re-run. For a system of this size
+and lifetime that trade was acceptable --- the pipeline is run end-to-end often, which is
+the condition under which regenerability substitutes tolerably for testing --- but it is
+the first thing that would need to change before the code could be maintained by anyone
+else, and it is a fair criticism of the implementation as delivered.
 
 %======================================================================
-\section[The NLP Cross-Platform Auto-Tagger \textnormal{\small(372 words)}]{The NLP Cross-Platform Auto-Tagger}
+\section[The NLP Cross-Platform Auto-Tagger \textnormal{\small(668 words)}]{The NLP Cross-Platform Auto-Tagger}
 \label{sec:tagger}
 %======================================================================
 
@@ -718,7 +974,7 @@ AtCoder problems carry a community difficulty estimate, which bounds how much of
 platform the difficulty-matching scorer can reach.
 
 %======================================================================
-\section[Evaluation Methodology \textnormal{\small(262 words)}]{Evaluation Methodology}
+\section[Evaluation Methodology \textnormal{\small(302 words)}]{Evaluation Methodology}
 \label{sec:eval}
 %======================================================================
 
@@ -772,7 +1028,7 @@ on CF) for a zero-CF-history user; and the skill experiments of
 Section~\ref{sec:results-xplat}.
 
 %======================================================================
-\section[Results \textnormal{\small(808 words)}]{Results}
+\section[Results \textnormal{\small(885 words)}]{Results}
 \label{sec:results}
 %======================================================================
 This section is written as an inquiry: each subsection poses a hypothesis, tests it, and
@@ -976,7 +1232,7 @@ AtCoder $+$ 5 CF (correct live) & \textbf{0.066} & $+40\%$ \\
 \end{figure}
 
 %======================================================================
-\section[Discussion \textnormal{\small(482 words)}]{Discussion}
+\section[Discussion \textnormal{\small(512 words)}]{Discussion}
 \label{sec:discussion}
 %======================================================================
 
@@ -1040,7 +1296,7 @@ principal, significance-tested results, but each bounds their scope and motivate
 future work below.
 
 %======================================================================
-\section[Professional, Legal and Ethical Considerations \textnormal{\small(138 words)}]{Professional, Legal and Ethical Considerations}
+\section[Professional, Legal and Ethical Considerations \textnormal{\small(139 words)}]{Professional, Legal and Ethical Considerations}
 \label{sec:ethics}
 %======================================================================
 Data was gathered only from public endpoints, with a polite fixed request delay,
@@ -1057,7 +1313,7 @@ rubrics) are copyrighted and are likewise excluded from the repository. All thir
 libraries are open-source and cited.
 
 %======================================================================
-\section[Conclusion and Future Work \textnormal{\small(179 words)}]{Conclusion and Future Work}
+\section[Conclusion and Future Work \textnormal{\small(182 words)}]{Conclusion and Future Work}
 \label{sec:conclusion}
 %======================================================================
 CPRS delivers a curated cross-platform competitive-programming resource, an NLP tagger
