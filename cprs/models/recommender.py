@@ -89,8 +89,11 @@ class RecommenderEngine:
 
         # Collect all tags
         all_tags = set()
+        self._tag_prevalence = Counter()
         for p in self.problems:
-            all_tags.update(p.get("tags_unified", []))
+            tags = p.get("tags_unified", [])
+            all_tags.update(tags)
+            self._tag_prevalence.update(tags)
         self.all_tags = sorted(all_tags)
 
     def build_user_profile(self, submissions: list, handle: str, rating: Optional[int] = None) -> UserProfile:
@@ -627,45 +630,68 @@ class RecommenderEngine:
 
         return filtered
 
-    def _find_weak_topics(self, profile: UserProfile, top_n: int = 5) -> list:
-        """Find user's weakest topics based on solve rate and coverage."""
-        # All topics the user has encountered
-        mastery = profile.topic_mastery
+    # A topic the user has never attempted is unknown, not weak. Ranking it
+    # above a topic they demonstrably struggle with confuses absence of
+    # evidence with evidence of absence — and in a cross-platform system it
+    # does real damage, because each platform has its own tag vocabulary. A
+    # Codeforces specialist has never touched `design` or `hash_table`, so
+    # treating unseen tags as maximal weakness declares every LeetCode-only
+    # tag their weakest area and floods the results with one platform.
+    #
+    # Unexplored topics still deserve a place — surfacing them is the whole
+    # point of going cross-platform — but as exploration ranked below proven
+    # weakness, not above it.
+    UNEXPLORED_PRIOR = 0.45
+    MIN_ATTEMPTS_FOR_CONFIDENCE = 8
 
-        # Score each topic: lower = weaker
-        topic_scores = {}
+    def _topic_scores(self, profile: UserProfile) -> dict:
+        """
+        Score every candidate topic by how much practice it deserves.
+
+        Demonstrated weakness is scaled by how much evidence supports it, so a
+        topic failed twice does not outrank one failed twenty times.
+        """
+        mastery = profile.topic_mastery
+        scores = {}
+
         for topic, m in mastery.items():
+            # `other:` tags are unmapped platform-specific labels rather than
+            # taxonomy entries, so they are not meaningful practice targets.
+            if topic.startswith("other:"):
+                continue
             if isinstance(m, dict):
                 m = TopicMastery(**m)
-            # Penalize low solve rate and low attempt count
+            attempted = m.problems_attempted
+            if attempted <= 0:
+                continue
             weakness = 1.0 - m.solve_rate
-            # Boost importance if they've barely tried it
-            if m.problems_attempted < 5:
-                weakness += 0.3
-            topic_scores[topic] = weakness
+            confidence = min(1.0, attempted / self.MIN_ATTEMPTS_FOR_CONFIDENCE)
+            # Half the score is the weakness itself, half is how sure we are
+            # of it; an unconvincing sample cannot reach the top on its own.
+            scores[topic] = weakness * (0.5 + 0.5 * confidence)
 
-        # Also add topics they haven't tried at all
-        for tag in self.all_tags:
-            if tag not in mastery and not tag.startswith("other:"):
-                topic_scores[tag] = 1.5  # highest priority — never attempted
+        # Unexplored topics, weighted by how well represented the topic is in
+        # the corpus — a tag on four problems is not a meaningful gap.
+        seen = {t for t, m in mastery.items()
+                if (m.get("problems_attempted", 0) if isinstance(m, dict)
+                    else m.problems_attempted) > 0}
+        if self._tag_prevalence:
+            busiest = max(self._tag_prevalence.values())
+            for tag in self.all_tags:
+                if tag in seen or tag.startswith("other:"):
+                    continue
+                share = self._tag_prevalence.get(tag, 0) / busiest
+                scores[tag] = self.UNEXPLORED_PRIOR * min(1.0, share * 4)
 
-        # Return weakest topics
-        sorted_topics = sorted(topic_scores.items(), key=lambda x: -x[1])
-        return [t for t, _ in sorted_topics[:top_n]]
+        return scores
+
+    def _find_weak_topics(self, profile: UserProfile, top_n: int = 5) -> list:
+        """The topics most worth practising, strongest evidence first."""
+        scores = self._topic_scores(profile)
+        ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        return [t for t, _ in ranked[:top_n]]
 
     def _compute_topic_weights(self, profile: UserProfile, target_topics: list) -> dict:
-        """Compute importance weights for each topic."""
-        weights = {}
-        mastery = profile.topic_mastery
-
-        for topic in target_topics:
-            m = mastery.get(topic)
-            if m is None:
-                weights[topic] = 1.0  # never tried, high priority
-            else:
-                if isinstance(m, dict):
-                    m = TopicMastery(**m)
-                # Weight inversely proportional to mastery
-                weights[topic] = max(0.1, 1.0 - m.solve_rate)
-
-        return weights
+        """Importance weight per target topic, on the same evidence scale."""
+        scores = self._topic_scores(profile)
+        return {t: max(0.1, scores.get(t, self.UNEXPLORED_PRIOR)) for t in target_topics}
