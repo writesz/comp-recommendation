@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CPRS — Recommendations</title>
 <link rel="stylesheet" href="/static/style.css">
+<style>
+    .calib {
+        background: rgba(88,166,255,0.07); border: 1px solid rgba(88,166,255,0.28);
+        border-radius: 9px; padding: 13px 16px; margin-bottom: 18px; font-size: 0.88rem;
+    }
+    .calib b { color: var(--accent); }
+    .calib .weak { color: var(--text-dim); font-size: 0.83rem; display: block; margin-top: 5px; }
+</style>
 </head>
 <body>
 
@@ -35,6 +43,8 @@
     </div>
 
     <div class="alert" id="alert"></div>
+
+    <div id="calibration" class="calib" style="display:none"></div>
 
     <div id="summary" style="display:none">
         <div class="stat-grid" style="margin-bottom:22px">
@@ -85,12 +95,36 @@ async function load() {
         const r = await fetch(`/api/recommend?n=${n}&platforms=${platforms}`);
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'Could not load recommendations');
+        renderCalibration(d.calibration, d.profile);
         renderSummary(d.profile);
         renderList(d.recommendations);
     } catch (e) {
         showAlert('alert', 'error', e.message);
     } finally {
         loading.classList.remove('show');
+    }
+}
+
+function renderCalibration(c, p) {
+    const el = document.getElementById('calibration');
+    if (!c) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+
+    if (c.sources && c.sources.length) {
+        el.innerHTML =
+            `Difficulty target <b>${(c.level).toFixed(2)}</b> — ${escapeHtml(c.explanation)}.` +
+            `<span class="weak">Contest results decide how hard these problems are; ` +
+            `your practice history decides which topics they cover. ` +
+            `Contest signal weighted ${Math.round(c.confidence * 100)}%` +
+            (c.history_level != null
+                ? ` (contest ${c.contest_level.toFixed(2)} vs practice history ${c.history_level.toFixed(2)})`
+                : '') + `.</span>`;
+    } else {
+        el.innerHTML =
+            `Difficulty target <b>${(c.level).toFixed(2)}</b> — ${escapeHtml(c.explanation)}.` +
+            `<span class="weak">Enter a rated contest and CPRS can calibrate this from your ` +
+            `rating instead, which tracks what you can solve unaided and under time pressure. ` +
+            `<a href="/contests">See your contest history</a></span>`;
     }
 }
 

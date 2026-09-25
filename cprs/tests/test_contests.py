@@ -217,3 +217,108 @@ def test_merge_pools_only_comparable_things():
 def test_merge_empty():
     m = C.merge({})
     assert m["total_contests"] == 0 and m["first_date"] is None
+
+
+# --- difficulty calibration -------------------------------------------------
+
+def _analysis(deltas, platform="codeforces", start=1500, performances=None, ts_offset=1):
+    recs = []
+    rating = start
+    for i, d in enumerate(deltas):
+        perf = performances[i] if performances else None
+        recs.append(C.ContestRecord(
+            platform=platform, name=f"R{i}", timestamp=NOW - (ts_offset + len(deltas) - i) * DAY,
+            old_rating=rating, new_rating=rating + d, delta=d, performance=perf, place=50,
+        ))
+        rating += d
+    return C.analyse(recs)
+
+
+def test_calibration_none_without_rated_history():
+    assert C.difficulty_calibration({"summary": {}, "timeline": []}, "codeforces") is None
+
+
+def test_calibration_maps_cf_rating_onto_unified_scale():
+    a = _analysis([10] * 10, start=1600)
+    cal = C.difficulty_calibration(a, "codeforces")
+    # rating ends ~1700; CF scale is 800..3500
+    assert 0.25 < cal["level"] < 0.40
+    assert cal["source"] == "codeforces"
+    assert cal["rated_contests"] == 10
+
+
+def test_calibration_confidence_grows_with_contests():
+    few = C.difficulty_calibration(_analysis([5] * 2), "codeforces")
+    many = C.difficulty_calibration(_analysis([5] * 20), "codeforces")
+    assert few["confidence"] < many["confidence"]
+    assert many["confidence"] == 1.0
+
+
+def test_calibration_leetcode_is_discounted():
+    cf = C.difficulty_calibration(_analysis([5] * 20), "codeforces")
+    lc = C.difficulty_calibration(_analysis([5] * 20, platform="leetcode"), "leetcode")
+    assert lc["confidence"] < cf["confidence"]
+
+
+def test_calibration_decays_when_stale():
+    fresh = C.difficulty_calibration(_analysis([5] * 20, ts_offset=1), "codeforces")
+    stale = C.difficulty_calibration(_analysis([5] * 20, ts_offset=900), "codeforces")
+    assert stale["confidence"] < fresh["confidence"]
+
+
+def test_calibration_prefers_recent_performance_when_available():
+    a = _analysis([5] * 10, platform="atcoder", start=1200,
+                  performances=[2400] * 10)
+    cal = C.difficulty_calibration(a, "atcoder")
+    assert "performance" in cal["basis"]
+    # performance (2400) should dominate the smoothed rating (~1250)
+    assert cal["rating"] == 2400
+
+
+def test_stretch_reflects_form():
+    up = C.difficulty_calibration(_analysis([40] * 10), "codeforces")
+    down = C.difficulty_calibration(_analysis([-40] * 10), "codeforces")
+    assert up["stretch"] > down["stretch"]
+
+
+def test_stretch_tightens_when_volatile():
+    swingy = C.difficulty_calibration(
+        _analysis([300, -300] * 6), "codeforces")
+    assert swingy["stretch"] <= 0.06
+
+
+# --- blending ---------------------------------------------------------------
+
+def test_blend_without_contests_falls_back_to_history():
+    b = C.blend_calibrations([], 0.42)
+    assert b["level"] == 0.42
+    assert b["confidence"] == 0.0
+    assert b["sources"] == []
+
+
+def test_blend_full_confidence_ignores_history():
+    cal = C.difficulty_calibration(_analysis([5] * 20), "codeforces")
+    b = C.blend_calibrations([cal], history_level=0.99)
+    assert b["confidence"] == 1.0
+    assert abs(b["level"] - cal["level"]) < 1e-6
+
+
+def test_blend_partial_confidence_mixes_with_history():
+    cal = C.difficulty_calibration(_analysis([5] * 2), "codeforces")
+    b = C.blend_calibrations([cal], history_level=0.9)
+    assert cal["level"] < b["level"] < 0.9
+
+
+def test_blend_combines_multiple_platforms():
+    cf = C.difficulty_calibration(_analysis([5] * 10), "codeforces")
+    lc = C.difficulty_calibration(_analysis([5] * 10, platform="leetcode"), "leetcode")
+    b = C.blend_calibrations([cf, lc], history_level=0.5)
+    assert set(b["sources"]) == {"codeforces", "leetcode"}
+    assert b["explanation"]
+
+
+def test_blend_level_stays_in_range():
+    for hist in (0.0, 0.5, 1.0):
+        cal = C.difficulty_calibration(_analysis([5] * 3), "codeforces")
+        b = C.blend_calibrations([cal], hist)
+        assert 0.0 <= b["level"] <= 1.0

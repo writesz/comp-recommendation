@@ -600,6 +600,31 @@ async def recommend(
         profile = engine.merge_profiles(profiles) if len(profiles) > 1 else profiles[0]
         profile.handle = user["username"]
 
+        # Contest results, where they exist, are a better estimate of how hard
+        # a problem this user can handle than the difficulty of what they have
+        # solved in practice. Let them set the difficulty target; solve history
+        # keeps deciding which topics to aim at.
+        calibrations = []
+        for p in PLATFORMS:
+            if p not in handles:
+                continue
+            try:
+                records = _contest_records(p, handles[p])
+            except Exception as e:
+                logger.info(f"No contest calibration from {p}: {e}")
+                continue
+            cal = contest_analysis.difficulty_calibration(
+                contest_analysis.analyse(records), p
+            )
+            if cal:
+                calibrations.append(cal)
+
+        calibration = contest_analysis.blend_calibrations(
+            calibrations, profile.difficulty_level
+        )
+        profile.difficulty_level = calibration["level"]
+        stretch = calibration["stretch"]
+
     elif handle:
         if handle_platform not in PLATFORMS:
             raise HTTPException(400, f"Unknown platform '{handle_platform}'")
@@ -616,6 +641,8 @@ async def recommend(
         recent_performances[handle_platform] = engine.analyze_recent_performance(
             subs, handle_platform, last_n
         )
+        calibration = contest_analysis.blend_calibrations([], profile.difficulty_level)
+        stretch = calibration["stretch"]
     else:
         raise HTTPException(401, "Log in to get recommendations")
 
@@ -623,7 +650,9 @@ async def recommend(
     if platforms != "all":
         platform_filter = [p.strip() for p in platforms.split(",")]
 
-    recs = engine.recommend(profile, n=n, platforms=platform_filter)
+    recs = engine.recommend(
+        profile, n=n, platforms=platform_filter, difficulty_stretch=stretch
+    )
 
     return {
         "profile": {
@@ -636,6 +665,7 @@ async def recommend(
             "difficulty_level": round(profile.difficulty_level, 3),
             "topic_mastery": _mastery_rows(profile, limit=20),
         },
+        "calibration": calibration,
         "recent_performance": {
             platform: {
                 "last_n": rp.last_n,

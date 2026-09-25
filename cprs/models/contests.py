@@ -383,3 +383,150 @@ def merge(per_platform: dict) -> dict:
         "platforms_improving": improving,
         "platforms_declining": declining,
     }
+
+
+# --- Difficulty calibration -------------------------------------------------
+#
+# Contest rating and practice history answer different questions, and the
+# recommender should take each from the source that actually knows.
+#
+# Rating is an Elo estimate: by construction a competitor rated R has roughly
+# an even chance on a problem rated R, solved alone and under time pressure.
+# The 75th percentile of a user's *solved* problems is a much weaker proxy —
+# it counts problems solved with an editorial open, upsolved after the round,
+# or simply whatever difficulty band the user happens to grind, so it drifts
+# with practice habits rather than tracking ability.
+#
+# Contests are far too sparse to say anything per topic (a handful of problems
+# per round against a taxonomy of ~100 tags), so topic targeting still comes
+# from solve history. Contests set *how hard*; history sets *what*.
+
+# LeetCode contest ratings are not on a problem-difficulty scale — LeetCode
+# only labels problems Easy/Medium/Hard — so this range is an approximation
+# calibrated against the platform's published rating distribution, and is
+# reported with lower confidence than the Codeforces and AtCoder mappings.
+LC_RATING_MIN = 1300
+LC_RATING_MAX = 3000
+
+_INACTIVE_DAYS = 180
+
+
+def difficulty_calibration(analysis: dict, platform: str) -> Optional[dict]:
+    """
+    Derive a target difficulty on the unified [0, 1] scale from contest results.
+
+    Returns {level, stretch, confidence, basis, rating, source} or None when
+    there is no usable rated history.
+    """
+    from models.unified_schema import (
+        normalize_cf_difficulty, normalize_ac_difficulty,
+    )
+
+    summary = analysis.get("summary") or {}
+    rated = summary.get("rated_contests") or 0
+    if not rated or summary.get("current_rating") is None:
+        return None
+
+    timeline = analysis.get("timeline") or []
+
+    # Prefer recent *performance* ratings where the platform reports them
+    # (AtCoder does): performance describes how the user actually did in that
+    # round, so it tracks current form faster than the smoothed rating.
+    performances = [
+        t["performance"] for t in timeline[-5:]
+        if t.get("performance") and t.get("rated")
+    ]
+    if len(performances) >= 3:
+        rating = mean(performances)
+        basis = f"average performance across your last {len(performances)} rated rounds"
+    else:
+        rating = summary["current_rating"]
+        basis = "your current contest rating"
+
+    if platform == "codeforces":
+        level = normalize_cf_difficulty(int(rating))
+    elif platform == "atcoder":
+        level = normalize_ac_difficulty(float(rating))
+    else:
+        clamped = max(LC_RATING_MIN, min(LC_RATING_MAX, rating))
+        level = (clamped - LC_RATING_MIN) / (LC_RATING_MAX - LC_RATING_MIN)
+
+    if level is None:
+        return None
+
+    # Confidence grows with the number of rated rounds and decays once the
+    # record goes stale — an old rating is a claim about a past self.
+    confidence = min(1.0, rated / 8.0)
+    if platform == "leetcode":
+        confidence *= 0.7          # approximate rating->difficulty mapping
+    last = timeline[-1]["timestamp"] if timeline else 0
+    days_idle = (datetime.now(timezone.utc).timestamp() - last) / 86400 if last else 9e9
+    if days_idle > _INACTIVE_DAYS:
+        confidence *= max(0.3, 1.0 - (days_idle - _INACTIVE_DAYS) / 730)
+
+    # Form decides how far above their level to aim. Stretching someone who is
+    # already sliding compounds the problem; consolidation serves them better.
+    trend = summary.get("trend")
+    volatility = summary.get("volatility") or 0
+    if trend == "improving":
+        stretch, note = 0.12, "you're gaining rating, so these aim a little above your level"
+    elif trend == "declining":
+        stretch, note = 0.04, "you're losing rating, so these stay close to your level to rebuild"
+    else:
+        stretch, note = 0.08, "your rating is steady, so these sit just above your level"
+    if volatility > 80:
+        stretch = min(stretch, 0.06)
+        note += "; your results swing a lot, so the range is kept tight"
+
+    return {
+        "level": round(float(level), 4),
+        "stretch": stretch,
+        "confidence": round(float(confidence), 3),
+        "rating": int(rating),
+        "basis": basis,
+        "note": note,
+        "source": platform,
+        "rated_contests": rated,
+    }
+
+
+def blend_calibrations(calibrations: list, history_level: float) -> dict:
+    """
+    Combine per-platform contest calibrations with the history-derived level.
+
+    Each calibration is weighted by its own confidence; whatever confidence is
+    left over falls back to the practice-history estimate, so a user with no
+    contest record is scored exactly as before.
+    """
+    usable = [c for c in calibrations if c]
+    if not usable:
+        return {
+            "level": history_level,
+            "stretch": 0.1,
+            "confidence": 0.0,
+            "sources": [],
+            "explanation": "calibrated from the difficulty of problems you've solved",
+        }
+
+    total_conf = sum(c["confidence"] for c in usable)
+    weight = min(1.0, total_conf)
+    contest_level = sum(c["level"] * c["confidence"] for c in usable) / (total_conf or 1)
+
+    level = weight * contest_level + (1 - weight) * history_level
+    best = max(usable, key=lambda c: c["confidence"])
+
+    labels = {"codeforces": "Codeforces", "atcoder": "AtCoder", "leetcode": "LeetCode"}
+    names = ", ".join(labels.get(c["source"], c["source"]) for c in usable)
+
+    return {
+        "level": round(level, 4),
+        "stretch": best["stretch"],
+        "confidence": round(weight, 3),
+        "sources": [c["source"] for c in usable],
+        "contest_level": round(contest_level, 4),
+        "history_level": round(history_level, 4),
+        "explanation": (
+            f"calibrated from your {names} contest record — {best['basis']}, "
+            f"and {best['note']}"
+        ),
+    }
