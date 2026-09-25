@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — Recommendations</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav class="nav" id="nav"></nav>
+
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <h1>Recommended for you</h1>
+            <p id="subtitle">Built from your solve history across your connected accounts</p>
+        </div>
+        <div class="spacer"></div>
+        <div style="display:flex;gap:10px;align-items:center">
+            <select class="input" id="platformFilter" style="width:auto" onchange="load()">
+                <option value="all">From all platforms</option>
+                <option value="codeforces">From Codeforces</option>
+                <option value="atcoder">From AtCoder</option>
+                <option value="leetcode">From LeetCode</option>
+            </select>
+            <select class="input" id="countSel" style="width:auto" onchange="load()">
+                <option value="10">10 problems</option>
+                <option value="20" selected>20 problems</option>
+                <option value="40">40 problems</option>
+            </select>
+            <button class="btn btn-outline" onclick="load()">Refresh</button>
+        </div>
+    </div>
+
+    <div class="alert" id="alert"></div>
+
+    <div id="summary" style="display:none">
+        <div class="stat-grid" style="margin-bottom:22px">
+            <div class="stat"><div class="stat-value" id="sSolved">—</div><div class="stat-label">Problems solved</div></div>
+            <div class="stat"><div class="stat-value" id="sLevel">—</div><div class="stat-label">Difficulty level</div></div>
+            <div class="stat"><div class="stat-value" id="sRate">—</div><div class="stat-label">Solve rate</div></div>
+            <div class="stat"><div class="stat-value" id="sPlatforms">—</div><div class="stat-label">Accounts connected</div></div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading"><span class="spinner"></span>Reading your submissions and ranking problems…</div>
+
+    <div id="list"></div>
+
+</div>
+
+<script src="/static/nav.js"></script>
+<script>
+let me = null;
+
+(async function () {
+    me = await renderNav('/app');
+    if (!me) return;
+    if (!me.handles || Object.keys(me.handles).length === 0) {
+        document.getElementById('subtitle').textContent =
+            'Connect a practice account to start getting recommendations';
+        showAlert('alert', 'info',
+            'You have not connected any platform accounts yet. Add one in your profile and your recommendations will appear here.');
+        document.getElementById('list').innerHTML =
+            '<div class="empty"><a href="/profile" class="btn">Connect an account</a></div>';
+        return;
+    }
+    load();
+})();
+
+async function load() {
+    if (!me || !me.handles || !Object.keys(me.handles).length) return;
+    const platforms = document.getElementById('platformFilter').value;
+    const n = document.getElementById('countSel').value;
+    const loading = document.getElementById('loading');
+    const list = document.getElementById('list');
+
+    hideAlert('alert');
+    loading.classList.add('show');
+    list.innerHTML = '';
+
+    try {
+        const r = await fetch(`/api/recommend?n=${n}&platforms=${platforms}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not load recommendations');
+        renderSummary(d.profile);
+        renderList(d.recommendations);
+    } catch (e) {
+        showAlert('alert', 'error', e.message);
+    } finally {
+        loading.classList.remove('show');
+    }
+}
+
+function renderSummary(p) {
+    document.getElementById('summary').style.display = 'block';
+    document.getElementById('sSolved').textContent = (p.total_solved || 0).toLocaleString();
+    document.getElementById('sLevel').textContent = (p.difficulty_level != null ? p.difficulty_level.toFixed(2) : '—');
+    document.getElementById('sRate').textContent = Math.round((p.solve_rate || 0) * 100) + '%';
+    document.getElementById('sPlatforms').textContent = Object.keys(me.handles).length;
+}
+
+function renderList(recs) {
+    const list = document.getElementById('list');
+    if (!recs.length) {
+        list.innerHTML = '<div class="empty">No problems matched — try widening the platform filter.</div>';
+        return;
+    }
+    list.innerHTML = recs.map((r, i) => `
+      <div class="rec">
+        <div class="rec-rank">${i + 1}</div>
+        <div class="rec-body">
+          <div class="rec-title"><a href="${r.url}" target="_blank" rel="noopener">${escapeHtml(r.name)}</a></div>
+          <div class="rec-meta">
+            <span class="pill platform-${r.platform}">${PLATFORM_LABEL[r.platform] || r.platform}</span>
+            ${r.difficulty != null ? `<span class="tag">difficulty ${r.difficulty.toFixed(2)}</span>` : ''}
+            ${(r.tags || []).slice(0, 4).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+          </div>
+          <div class="rec-reasons">${(r.reasons || []).map(escapeHtml).join(' · ')}</div>
+        </div>
+        <div class="rec-score"><b>${r.score.toFixed(2)}</b>match</div>
+      </div>`).join('');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+</script>
+</body>
+</html>

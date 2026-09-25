@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — Contest performance</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    .insight {
+        display: flex; gap: 13px; align-items: flex-start;
+        background: var(--bg); border: 1px solid var(--border);
+        border-left-width: 3px; border-radius: 8px;
+        padding: 14px 16px; margin-bottom: 10px;
+    }
+    .insight-good  { border-left-color: var(--green); }
+    .insight-watch { border-left-color: var(--yellow); }
+    .insight-info  { border-left-color: var(--accent); }
+    .insight .mark { font-size: 1rem; line-height: 1.4; }
+    .insight h4 { font-size: 0.93rem; margin-bottom: 3px; font-weight: 600; }
+    .insight p { font-size: 0.86rem; color: var(--text-dim); }
+
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .chart-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .chart-head h3 { font-size: 1rem; }
+    .chart-head .now { margin-left: auto; font-size: 0.85rem; color: var(--text-dim); }
+    .chart-head .now b { color: var(--accent); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+    svg.chart { width: 100%; height: 190px; display: block; overflow: visible; }
+    .gridline { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+    .axis-label { fill: var(--text-dim); font-size: 10px; }
+    .peak-dot { fill: var(--yellow); }
+    .hover-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; opacity: 0; }
+
+    .tooltip {
+        position: fixed; pointer-events: none; opacity: 0; transition: opacity 0.1s;
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 7px; padding: 9px 12px; font-size: 0.8rem; z-index: 99;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.5); max-width: 260px;
+    }
+    .tooltip .t-name { font-weight: 600; margin-bottom: 3px; }
+    .tooltip .t-row { color: var(--text-dim); }
+    .delta-pos { color: var(--green); font-weight: 600; }
+    .delta-neg { color: var(--red); font-weight: 600; }
+    .delta-zero { color: var(--text-dim); }
+
+    .plat-block { margin-bottom: 30px; }
+    .plat-head { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+    .plat-head h2 { font-size: 1.1rem; }
+    .plat-head .handle { color: var(--text-dim); font-size: 0.88rem; }
+    .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 11px; margin: 14px 0; }
+    .mini { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+    .mini .v { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .mini .l { font-size: 0.73rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav"></nav>
+<div class="tooltip" id="tip"></div>
+
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <h1>Contest performance</h1>
+            <p id="subtitle">Where your rating is going, and what to change</p>
+        </div>
+        <div class="spacer"></div>
+        <select class="input" id="scope" style="width:auto" onchange="load()">
+            <option value="all">All platforms</option>
+        </select>
+    </div>
+
+    <div class="alert" id="alert"></div>
+    <div class="loading" id="loading"><span class="spinner"></span>Fetching your contest history…</div>
+
+    <div id="content" style="display:none">
+        <div class="stat-grid" id="overall" style="margin-bottom:26px"></div>
+        <div id="platforms"></div>
+        <div style="height:60px"></div>
+    </div>
+
+</div>
+
+<script src="/static/nav.js"></script>
+<script>
+let me = null;
+
+(async function () {
+    me = await renderNav('/contests');
+    if (!me) return;
+    const handles = me.handles || {};
+    const scope = document.getElementById('scope');
+    PLATFORMS.filter(p => handles[p]).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p;
+        o.textContent = PLATFORM_LABEL[p] + ' · ' + handles[p];
+        scope.appendChild(o);
+    });
+    if (!Object.keys(handles).length) {
+        showAlert('alert', 'info', 'Connect a platform account in your profile to see contest performance.');
+        return;
+    }
+    load();
+})();
+
+async function load() {
+    const scope = document.getElementById('scope').value;
+    const loading = document.getElementById('loading');
+    const content = document.getElementById('content');
+    hideAlert('alert');
+    loading.classList.add('show');
+    content.style.display = 'none';
+    try {
+        const r = await fetch(`/api/contests?platform=${scope}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not load contest history');
+        render(d);
+        content.style.display = 'block';
+        if (d.errors && Object.keys(d.errors).length) {
+            showAlert('alert', 'error', Object.values(d.errors).join(' · '));
+        }
+    } catch (e) {
+        showAlert('alert', 'error', e.message);
+    } finally {
+        loading.classList.remove('show');
+    }
+}
+
+function render(d) {
+    const o = d.overall;
+    document.getElementById('subtitle').textContent =
+        `${o.total_contests} contests across ${o.platforms} platform${o.platforms === 1 ? '' : 's'}` +
+        (o.first_date ? ` · ${o.first_date} to ${o.last_date}` : '');
+
+    document.getElementById('overall').innerHTML = `
+      <div class="stat"><div class="stat-value">${o.total_contests}</div>
+           <div class="stat-label">Contests entered</div></div>
+      <div class="stat"><div class="stat-value">${Math.round(o.positive_rate * 100)}%</div>
+           <div class="stat-label">Rounds gaining rating</div></div>
+      <div class="stat"><div class="stat-value">${o.platforms_improving}</div>
+           <div class="stat-label">Platforms trending up</div></div>
+      <div class="stat"><div class="stat-value">${o.platforms}</div>
+           <div class="stat-label">Platforms competing on</div></div>`;
+
+    document.getElementById('platforms').innerHTML =
+        Object.entries(d.per_platform).map(([p, a]) => platformBlock(p, a)).join('');
+
+    Object.entries(d.per_platform).forEach(([p, a]) => attachChart(p, a));
+}
+
+function platformBlock(p, a) {
+    const s = a.summary;
+    const delta = v => v == null ? '—'
+        : `<span class="${v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero'}">${v > 0 ? '+' : ''}${v}</span>`;
+
+    return `
+    <div class="plat-block">
+      <div class="plat-head">
+        <span class="pill platform-${p}">${a.label}</span>
+        <span class="handle">${escapeHtml(a.handle)}</span>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <h3>Rating over ${s.rated_contests} rated contests</h3>
+          <div class="now">current <b>${s.current_rating ?? '—'}</b>
+            ${s.peak_rating ? `· peak ${s.peak_rating}` : ''}</div>
+        </div>
+        <svg class="chart" id="chart-${p}"></svg>
+      </div>
+
+      <div class="mini-grid">
+        <div class="mini"><div class="v">${delta(s.net_change)}</div><div class="l">All-time change</div></div>
+        <div class="mini"><div class="v">${delta(s.recent_change)}</div><div class="l">Last ${s.recent_window} contests</div></div>
+        <div class="mini"><div class="v">${delta(s.avg_delta)}</div><div class="l">Avg per contest</div></div>
+        <div class="mini"><div class="v">±${s.volatility}</div><div class="l">Volatility</div></div>
+        <div class="mini"><div class="v">${Math.round(s.positive_rate * 100)}%</div><div class="l">Positive rounds</div></div>
+        ${s.best_place ? `<div class="mini"><div class="v">#${s.best_place}</div><div class="l">Best place</div></div>` : ''}
+      </div>
+
+      ${a.best || a.worst ? `
+      <div class="split" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        ${a.best ? `<div class="mini"><div class="l">Best round</div>
+          <div style="font-size:0.9rem;margin-top:4px">${escapeHtml(a.best.name)}</div>
+          <div class="l" style="text-transform:none">${a.best.date} · ${delta(a.best.delta)}${a.best.place ? ` · place #${a.best.place}` : ''}</div></div>` : ''}
+        ${a.worst ? `<div class="mini"><div class="l">Toughest round</div>
+          <div style="font-size:0.9rem;margin-top:4px">${escapeHtml(a.worst.name)}</div>
+          <div class="l" style="text-transform:none">${a.worst.date} · ${delta(a.worst.delta)}${a.worst.place ? ` · place #${a.worst.place}` : ''}</div></div>` : ''}
+      </div>` : ''}
+
+      ${a.insights.length ? `
+        <h3 style="font-size:0.95rem;margin:16px 0 10px">What this suggests</h3>
+        ${a.insights.map(i => `
+          <div class="insight insight-${i.kind}">
+            <span class="mark">${i.kind === 'good' ? '✓' : i.kind === 'watch' ? '!' : 'i'}</span>
+            <div><h4>${escapeHtml(i.title)}</h4><p>${escapeHtml(i.detail)}</p></div>
+          </div>`).join('')}` : ''}
+    </div>`;
+}
+
+/** Draw the rating line as inline SVG — no chart library. */
+function attachChart(platform, a) {
+    const svg = document.getElementById('chart-' + platform);
+    if (!svg) return;
+    const pts = a.timeline.filter(t => t.new_rating != null);
+    if (pts.length < 2) {
+        svg.innerHTML = `<text x="10" y="90" class="axis-label">Not enough rated contests to plot a trend yet</text>`;
+        return;
+    }
+
+    const W = svg.clientWidth || 800, H = 190;
+    const padL = 40, padR = 12, padT = 14, padB = 22;
+    const ratings = pts.map(p => p.new_rating);
+    let lo = Math.min(...ratings), hi = Math.max(...ratings);
+    const span = Math.max(hi - lo, 40);
+    lo -= span * 0.12; hi += span * 0.12;
+
+    const x = i => padL + (i / (pts.length - 1)) * (W - padL - padR);
+    const y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+
+    // gridlines + y labels
+    let grid = '';
+    for (let k = 0; k <= 3; k++) {
+        const val = Math.round(lo + (hi - lo) * (k / 3));
+        const yy = y(val);
+        grid += `<line class="gridline" x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"/>`;
+        grid += `<text class="axis-label" x="4" y="${yy + 3}">${val}</text>`;
+    }
+
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.new_rating).toFixed(1)}`).join('');
+    const area = line + `L${x(pts.length - 1).toFixed(1)},${H - padB}L${padL},${H - padB}Z`;
+
+    const peak = pts.reduce((m, p, i) => p.new_rating > pts[m].new_rating ? i : m, 0);
+
+    svg.innerHTML = `
+      <defs><linearGradient id="g-${platform}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${grid}
+      <path d="${area}" fill="url(#g-${platform})"/>
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <circle class="peak-dot" cx="${x(peak)}" cy="${y(pts[peak].new_rating)}" r="3.5"/>
+      <text class="axis-label" x="${padL}" y="${H - 6}">${pts[0].date}</text>
+      <text class="axis-label" x="${W - padR}" y="${H - 6}" text-anchor="end">${pts[pts.length - 1].date}</text>
+      <circle class="hover-dot" id="hd-${platform}" r="4.5"/>
+      <rect x="${padL}" y="0" width="${W - padL - padR}" height="${H}" fill="transparent"/>`;
+
+    const tip = document.getElementById('tip');
+    const dot = document.getElementById('hd-' + platform);
+    const rect = svg.querySelector('rect');
+
+    rect.addEventListener('mousemove', ev => {
+        const box = svg.getBoundingClientRect();
+        const rel = ev.clientX - box.left;
+        let i = Math.round(((rel - padL) / (W - padL - padR)) * (pts.length - 1));
+        i = Math.max(0, Math.min(pts.length - 1, i));
+        const p = pts[i];
+        dot.setAttribute('cx', x(i));
+        dot.setAttribute('cy', y(p.new_rating));
+        dot.style.opacity = 1;
+        const dcls = p.delta > 0 ? 'delta-pos' : p.delta < 0 ? 'delta-neg' : 'delta-zero';
+        tip.innerHTML =
+            `<div class="t-name">${escapeHtml(p.name)}</div>` +
+            `<div class="t-row">${p.date} · rating ${p.new_rating}` +
+            (p.delta != null ? ` <span class="${dcls}">${p.delta > 0 ? '+' : ''}${p.delta}</span>` : '') +
+            `</div>` +
+            (p.place ? `<div class="t-row">place #${p.place}</div>` : '') +
+            (p.problems_solved != null
+                ? `<div class="t-row">solved ${p.problems_solved}/${p.problems_total}</div>` : '');
+        tip.style.opacity = 1;
+        tip.style.left = Math.min(ev.clientX + 14, window.innerWidth - 270) + 'px';
+        tip.style.top = (ev.clientY - 10) + 'px';
+    });
+    rect.addEventListener('mouseleave', () => {
+        tip.style.opacity = 0;
+        dot.style.opacity = 0;
+    });
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+window.addEventListener('resize', () => {
+    clearTimeout(window._rz);
+    window._rz = setTimeout(load, 250);
+});
+</script>
+</body>
+</html>

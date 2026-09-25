@@ -48,7 +48,27 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        CREATE TABLE IF NOT EXISTS subscribers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
+
+    # Additive migrations for the profile fields. Existing databases predate
+    # these columns, so add them one at a time and ignore the ones already there.
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    for column, ddl in [
+        ("email", "ALTER TABLE users ADD COLUMN email TEXT"),
+        ("first_name", "ALTER TABLE users ADD COLUMN first_name TEXT"),
+        ("last_name", "ALTER TABLE users ADD COLUMN last_name TEXT"),
+        ("avatar", "ALTER TABLE users ADD COLUMN avatar TEXT"),
+    ]:
+        if column not in existing:
+            conn.execute(ddl)
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")
@@ -62,14 +82,21 @@ def hash_password(password: str, salt: Optional[str] = None) -> tuple:
     return pw_hash, salt
 
 
-def create_user(username: str, password: str) -> Optional[int]:
+def create_user(
+    username: str,
+    password: str,
+    email: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+) -> Optional[int]:
     """Create a new user. Returns user_id or None if username taken."""
     pw_hash, salt = hash_password(password)
     conn = get_db()
     try:
         cursor = conn.execute(
-            "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-            (username, pw_hash, salt),
+            """INSERT INTO users (username, password_hash, salt, email, first_name, last_name)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (username, pw_hash, salt, email, first_name, last_name),
         )
         conn.commit()
         return cursor.lastrowid
@@ -156,6 +183,48 @@ def remove_handle(user_id: int, platform: str):
     conn.execute(
         "DELETE FROM platform_handles WHERE user_id = ? AND platform = ?",
         (user_id, platform),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_profile(user_id: int) -> Optional[dict]:
+    """Full profile record for a user, including handles."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT id, username, email, first_name, last_name, avatar, created_at
+           FROM users WHERE id = ?""",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    profile = dict(row)
+    profile["handles"] = get_handles(user_id)
+    return profile
+
+
+def update_profile(user_id: int, **fields):
+    """Update any of email / first_name / last_name / avatar."""
+    allowed = {"email", "first_name", "last_name", "avatar"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return
+    assignments = ", ".join(f"{k} = ?" for k in updates)
+    conn = get_db()
+    conn.execute(
+        f"UPDATE users SET {assignments} WHERE id = ?",
+        (*updates.values(), user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_subscriber(email: str, message: Optional[str] = None):
+    """Record a landing-page subscription or suggestion."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO subscribers (email, message) VALUES (?, ?)", (email, message)
     )
     conn.commit()
     conn.close()

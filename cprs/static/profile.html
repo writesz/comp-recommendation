@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — Profile</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    .profile-top { display: flex; gap: 22px; align-items: center; margin-bottom: 26px; flex-wrap: wrap; }
+    .avatar-edit { position: relative; cursor: pointer; }
+    .avatar-edit .overlay {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.72rem; font-weight: 600;
+        display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s;
+    }
+    .avatar-edit:hover .overlay { opacity: 1; }
+    .profile-name { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+    .profile-sub { color: var(--text-dim); font-size: 0.9rem; }
+
+    .handle-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .handle-row .pill { min-width: 96px; text-align: center; flex-shrink: 0; }
+    .handle-row .input { flex: 1; }
+    .handle-row .status { font-size: 0.79rem; min-width: 118px; color: var(--text-dim); }
+    .handle-row .status.ok { color: var(--green); }
+    .handle-row .status.bad { color: var(--red); }
+
+    .coverage {
+        background: rgba(88,166,255,0.07); border: 1px solid rgba(88,166,255,0.28);
+        border-radius: 9px; padding: 14px 16px; margin-bottom: 18px; font-size: 0.88rem;
+    }
+    .meter { display: flex; gap: 5px; margin-top: 10px; }
+    .meter-seg { flex: 1; height: 5px; border-radius: 3px; background: var(--border); }
+    .meter-seg.on { background: var(--green); }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav"></nav>
+
+<div class="container" style="max-width:780px">
+
+    <div class="page-head"><div><h1>Your profile</h1>
+        <p>Your details and the practice accounts CPRS learns from</p></div></div>
+
+    <div class="alert" id="alert"></div>
+
+    <div class="card">
+        <div class="profile-top">
+            <div class="avatar-edit" onclick="document.getElementById('avatarInput').click()">
+                <div id="avatarHolder"></div>
+                <div class="overlay">Change</div>
+            </div>
+            <div>
+                <div class="profile-name" id="pName">—</div>
+                <div class="profile-sub" id="pSub">—</div>
+                <button class="btn btn-sm btn-outline" style="margin-top:9px"
+                        onclick="document.getElementById('avatarInput').click()">Upload picture</button>
+                <button class="btn btn-sm btn-outline" style="margin-top:9px" id="rmAvatar"
+                        onclick="removeAvatar()" style="display:none">Remove</button>
+            </div>
+        </div>
+        <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="onAvatarPick(event)">
+
+        <div class="row">
+            <div class="field">
+                <label for="fFirst">First name</label>
+                <input class="input" id="fFirst">
+            </div>
+            <div class="field">
+                <label for="fLast">Last name</label>
+                <input class="input" id="fLast">
+            </div>
+        </div>
+        <div class="field">
+            <label for="fEmail">Email</label>
+            <input class="input" id="fEmail" type="email">
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Connected accounts</h2>
+        <p class="hint" style="margin-bottom:16px">
+            These are the handles CPRS reads your solve history from.
+        </p>
+
+        <div class="coverage">
+            <span id="coverageText">—</span>
+            <div class="meter">
+                <div class="meter-seg" id="seg1"></div>
+                <div class="meter-seg" id="seg2"></div>
+                <div class="meter-seg" id="seg3"></div>
+            </div>
+        </div>
+
+        <div class="handle-row">
+            <span class="pill platform-codeforces">Codeforces</span>
+            <input class="input" id="hCodeforces" placeholder="not connected" oninput="onHandleInput('codeforces')">
+            <span class="status" id="stCodeforces"></span>
+        </div>
+        <div class="handle-row">
+            <span class="pill platform-atcoder">AtCoder</span>
+            <input class="input" id="hAtcoder" placeholder="not connected" oninput="onHandleInput('atcoder')">
+            <span class="status" id="stAtcoder"></span>
+        </div>
+        <div class="handle-row">
+            <span class="pill platform-leetcode">LeetCode</span>
+            <input class="input" id="hLeetcode" placeholder="not connected" oninput="onHandleInput('leetcode')">
+            <span class="status" id="stLeetcode"></span>
+        </div>
+        <p class="hint">Clear a field to disconnect that account. Public data only — we never ask for platform passwords.</p>
+    </div>
+
+    <div style="display:flex;gap:12px;margin:22px 0 60px">
+        <button class="btn btn-lg" id="saveBtn" onclick="save()">Save changes</button>
+        <a href="/report" class="btn btn-lg btn-outline">View my report</a>
+    </div>
+
+</div>
+
+<script src="/static/nav.js"></script>
+<script>
+let profile = null;
+let pendingAvatar = null;
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+(async function () {
+    const user = await renderNav('/profile');
+    if (!user) return;
+    profile = await (await fetch('/api/profile')).json();
+    paint();
+})();
+
+function paint() {
+    document.getElementById('fFirst').value = profile.first_name || '';
+    document.getElementById('fLast').value = profile.last_name || '';
+    document.getElementById('fEmail').value = profile.email || '';
+    PLATFORMS.forEach(p => {
+        document.getElementById('h' + cap(p)).value = (profile.handles || {})[p] || '';
+    });
+    const name = [profile.first_name, profile.last_name].filter(Boolean).join(' ');
+    document.getElementById('pName').textContent = name || profile.username;
+    document.getElementById('pSub').textContent =
+        '@' + profile.username + (profile.email ? ' · ' + profile.email : '');
+    document.getElementById('avatarHolder').innerHTML =
+        avatarHtml({...profile, avatar: pendingAvatar || profile.avatar}, '');
+    document.getElementById('rmAvatar').style.display =
+        (pendingAvatar || profile.avatar) ? 'inline-block' : 'none';
+    updateCoverage();
+}
+
+function updateCoverage() {
+    const n = PLATFORMS.filter(p => document.getElementById('h' + cap(p)).value.trim()).length;
+    [1, 2, 3].forEach(i => document.getElementById('seg' + i).classList.toggle('on', i <= n));
+    const texts = [
+        'No accounts connected — CPRS cannot build your profile yet.',
+        'One account connected. Add another and CPRS can compare your ability across platforms and calibrate difficulty more accurately.',
+        'Two accounts connected. One more gives CPRS the complete picture of your ability.',
+        'All three connected — CPRS has the full picture of your solving history.'
+    ];
+    document.getElementById('coverageText').textContent = texts[n];
+}
+
+const timers = {};
+function onHandleInput(platform) {
+    updateCoverage();
+    const value = document.getElementById('h' + cap(platform)).value.trim();
+    const status = document.getElementById('st' + cap(platform));
+    clearTimeout(timers[platform]);
+    if (!value) { status.textContent = ''; status.className = 'status'; return; }
+    status.textContent = 'checking…'; status.className = 'status';
+    timers[platform] = setTimeout(async () => {
+        try {
+            const r = await fetch(`/api/handles/verify?platform=${platform}&handle=${encodeURIComponent(value)}`,
+                                  {method: 'POST'});
+            const d = await r.json();
+            status.className = 'status ' + (d.ok ? 'ok' : 'bad');
+            status.textContent = d.ok
+                ? (d.rating ? `✓ rating ${d.rating}` : '✓ found')
+                : '✕ not found';
+        } catch { status.textContent = ''; }
+    }, 700);
+}
+
+function onAvatarPick(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 800000) {
+        return showAlert('alert', 'error', 'That image is over 800 KB — please pick a smaller one.');
+    }
+    const reader = new FileReader();
+    reader.onload = () => { pendingAvatar = reader.result; paint(); hideAlert('alert'); };
+    reader.readAsDataURL(file);
+}
+
+function removeAvatar() {
+    pendingAvatar = null;
+    profile.avatar = null;
+    paint();
+}
+
+async function save() {
+    const handles = {};
+    PLATFORMS.forEach(p => { handles[p] = document.getElementById('h' + cap(p)).value.trim(); });
+    const body = {
+        first_name: document.getElementById('fFirst').value.trim(),
+        last_name: document.getElementById('fLast').value.trim(),
+        email: document.getElementById('fEmail').value.trim(),
+        handles
+    };
+    if (pendingAvatar) body.avatar = pendingAvatar;
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    hideAlert('alert');
+    try {
+        const r = await fetch('/api/profile', {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not save');
+        profile = d;
+        pendingAvatar = null;
+        paint();
+        showAlert('alert', 'ok', 'Saved.');
+    } catch (e) {
+        showAlert('alert', 'error', e.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>

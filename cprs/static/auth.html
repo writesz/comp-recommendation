@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — Sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    .auth-wrap { padding: 56px 0 80px; }
+    .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 34px; }
+    .auth-head { text-align: center; margin-bottom: 26px; }
+    .auth-head h1 { font-size: 1.55rem; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .auth-head p { color: var(--text-dim); font-size: 0.92rem; }
+    .switch { text-align: center; margin-top: 20px; font-size: 0.89rem; color: var(--text-dim); }
+
+    .steps { display: flex; gap: 8px; margin-bottom: 26px; }
+    .step-dot { flex: 1; height: 3px; background: var(--border); border-radius: 2px; }
+    .step-dot.done { background: var(--accent); }
+
+    .platform-field { border: 1px solid var(--border); border-radius: 9px; padding: 14px; margin-bottom: 11px; background: var(--bg); }
+    .platform-field.filled { border-color: rgba(63,185,80,0.45); }
+    .platform-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+    .platform-head .pill { flex-shrink: 0; }
+    .platform-head .status { margin-left: auto; font-size: 0.78rem; color: var(--text-dim); }
+    .platform-head .status.ok { color: var(--green); }
+    .platform-head .status.bad { color: var(--red); }
+
+    .value-note {
+        background: rgba(88,166,255,0.07);
+        border: 1px solid rgba(88,166,255,0.28);
+        border-radius: 9px; padding: 14px 16px; margin-bottom: 20px; font-size: 0.88rem;
+    }
+    .value-note strong { color: var(--accent); }
+    .meter { display: flex; gap: 5px; margin-top: 11px; }
+    .meter-seg { flex: 1; height: 5px; border-radius: 3px; background: var(--border); transition: background 0.25s; }
+    .meter-seg.on { background: var(--green); }
+    .meter-label { font-size: 0.82rem; margin-top: 8px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+    <div class="nav-inner">
+        <a href="/" class="brand">C<span>PRS</span></a>
+        <div class="nav-links"></div>
+    </div>
+</nav>
+
+<div class="container-narrow auth-wrap">
+
+    <!-- LOGIN -->
+    <div id="loginView" style="display:none">
+        <div class="auth-card">
+            <div class="auth-head">
+                <h1>Welcome back</h1>
+                <p>Sign in to see your recommendations</p>
+            </div>
+            <div class="alert" id="loginAlert"></div>
+            <div class="field">
+                <label for="liUser">Username</label>
+                <input class="input" id="liUser" autocomplete="username"
+                       onkeydown="if(event.key==='Enter')document.getElementById('liPass').focus()">
+            </div>
+            <div class="field">
+                <label for="liPass">Password</label>
+                <input class="input" id="liPass" type="password" autocomplete="current-password"
+                       onkeydown="if(event.key==='Enter')doLogin()">
+            </div>
+            <button class="btn btn-lg" style="width:100%" id="loginBtn" onclick="doLogin()">Sign in</button>
+            <div class="switch">
+                New here? <a href="/register" onclick="showRegister(event)">Create an account</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="registerView" style="display:none">
+        <div class="auth-card">
+            <div class="auth-head">
+                <h1>Create your account</h1>
+                <p>Two short steps and you're in</p>
+            </div>
+            <div class="steps">
+                <div class="step-dot done" id="dot1"></div>
+                <div class="step-dot" id="dot2"></div>
+            </div>
+            <div class="alert" id="regAlert"></div>
+
+            <!-- step 1 -->
+            <div id="regStep1">
+                <div class="row">
+                    <div class="field">
+                        <label for="rgFirst">First name</label>
+                        <input class="input" id="rgFirst" placeholder="Ada">
+                    </div>
+                    <div class="field">
+                        <label for="rgLast">Last name</label>
+                        <input class="input" id="rgLast" placeholder="Lovelace">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="rgEmail">Email</label>
+                    <input class="input" id="rgEmail" type="email" placeholder="you@example.com">
+                </div>
+                <div class="field">
+                    <label for="rgUser">Username <span style="color:var(--red)">*</span></label>
+                    <input class="input" id="rgUser" autocomplete="username" placeholder="At least 3 characters">
+                </div>
+                <div class="field">
+                    <label for="rgPass">Password <span style="color:var(--red)">*</span></label>
+                    <input class="input" id="rgPass" type="password" autocomplete="new-password"
+                           placeholder="At least 4 characters"
+                           onkeydown="if(event.key==='Enter')goStep2()">
+                </div>
+                <button class="btn btn-lg" style="width:100%" onclick="goStep2()">Continue</button>
+                <div class="switch">
+                    Already have an account? <a href="/login" onclick="showLogin(event)">Sign in</a>
+                </div>
+            </div>
+
+            <!-- step 2 -->
+            <div id="regStep2" style="display:none">
+                <div class="value-note">
+                    <strong>Connect your practice accounts.</strong>
+                    CPRS learns from what you've already solved — so the more platforms you
+                    connect, the sharper your recommendations get. Every account you add
+                    fills in topics the others can't see and sharpens your difficulty
+                    calibration. You can add or change these any time.
+                    <div class="meter">
+                        <div class="meter-seg" id="seg1"></div>
+                        <div class="meter-seg" id="seg2"></div>
+                        <div class="meter-seg" id="seg3"></div>
+                    </div>
+                    <div class="meter-label" id="meterLabel">No accounts connected yet</div>
+                </div>
+
+                <div class="platform-field" id="pfCodeforces">
+                    <div class="platform-head">
+                        <span class="pill platform-codeforces">Codeforces</span>
+                        <span class="status" id="stCodeforces"></span>
+                    </div>
+                    <input class="input" id="hCodeforces" placeholder="e.g. tourist"
+                           oninput="onHandleInput('codeforces')">
+                </div>
+
+                <div class="platform-field" id="pfAtcoder">
+                    <div class="platform-head">
+                        <span class="pill platform-atcoder">AtCoder</span>
+                        <span class="status" id="stAtcoder"></span>
+                    </div>
+                    <input class="input" id="hAtcoder" placeholder="e.g. tourist"
+                           oninput="onHandleInput('atcoder')">
+                </div>
+
+                <div class="platform-field" id="pfLeetcode">
+                    <div class="platform-head">
+                        <span class="pill platform-leetcode">LeetCode</span>
+                        <span class="status" id="stLeetcode"></span>
+                    </div>
+                    <input class="input" id="hLeetcode" placeholder="e.g. lee215"
+                           oninput="onHandleInput('leetcode')">
+                </div>
+
+                <p class="hint" style="margin-bottom:18px">
+                    We only read public profile data. We never ask for your password on these platforms.
+                </p>
+
+                <div class="row">
+                    <button class="btn btn-outline btn-lg" onclick="backStep1()">Back</button>
+                    <button class="btn btn-lg" id="regBtn" style="flex:2" onclick="doRegister()">
+                        Create account
+                    </button>
+                </div>
+                <div class="switch" id="skipNote">
+                    You can skip this and add accounts later, but recommendations need at least one.
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const PLATFORMS = ['codeforces', 'atcoder', 'leetcode'];
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const nextUrl = new URLSearchParams(location.search).get('next') || '/app';
+
+function showLogin(e) {
+    if (e) e.preventDefault();
+    history.replaceState({}, '', '/login' + location.search);
+    document.getElementById('loginView').style.display = 'block';
+    document.getElementById('registerView').style.display = 'none';
+    document.title = 'CPRS — Sign in';
+}
+function showRegister(e) {
+    if (e) e.preventDefault();
+    history.replaceState({}, '', '/register' + location.search);
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('registerView').style.display = 'block';
+    document.title = 'CPRS — Create your account';
+}
+
+if (location.pathname === '/register') showRegister(); else showLogin();
+
+function alertBox(id, kind, msg) {
+    const el = document.getElementById(id);
+    el.className = 'alert alert-' + kind + ' show';
+    el.textContent = msg;
+}
+function clearAlert(id) { document.getElementById(id).className = 'alert'; }
+
+// --- login ---
+async function doLogin() {
+    const username = document.getElementById('liUser').value.trim();
+    const password = document.getElementById('liPass').value;
+    if (!username || !password) return alertBox('loginAlert', 'error', 'Enter your username and password');
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; clearAlert('loginAlert');
+    try {
+        const r = await fetch('/api/login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, password})
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not sign in');
+        location.href = nextUrl;
+    } catch (e) {
+        alertBox('loginAlert', 'error', e.message);
+        btn.disabled = false;
+    }
+}
+
+// --- register ---
+function goStep2() {
+    const u = document.getElementById('rgUser').value.trim();
+    const p = document.getElementById('rgPass').value;
+    if (u.length < 3) return alertBox('regAlert', 'error', 'Username must be at least 3 characters');
+    if (p.length < 4) return alertBox('regAlert', 'error', 'Password must be at least 4 characters');
+    clearAlert('regAlert');
+    document.getElementById('regStep1').style.display = 'none';
+    document.getElementById('regStep2').style.display = 'block';
+    document.getElementById('dot2').classList.add('done');
+}
+function backStep1() {
+    document.getElementById('regStep2').style.display = 'none';
+    document.getElementById('regStep1').style.display = 'block';
+    document.getElementById('dot2').classList.remove('done');
+}
+
+const checkTimers = {};
+function onHandleInput(platform) {
+    const input = document.getElementById('h' + cap(platform));
+    const status = document.getElementById('st' + cap(platform));
+    const field = document.getElementById('pf' + cap(platform));
+    const value = input.value.trim();
+
+    field.classList.toggle('filled', !!value);
+    updateMeter();
+
+    clearTimeout(checkTimers[platform]);
+    if (!value) { status.textContent = ''; status.className = 'status'; return; }
+
+    status.textContent = 'checking…'; status.className = 'status';
+    checkTimers[platform] = setTimeout(async () => {
+        try {
+            const r = await fetch(`/api/handles/verify?platform=${platform}&handle=${encodeURIComponent(value)}`,
+                                  {method: 'POST'});
+            const d = await r.json();
+            if (d.ok) {
+                status.className = 'status ok';
+                status.textContent = d.rating ? `✓ found · rating ${d.rating}` : '✓ found';
+            } else {
+                status.className = 'status bad';
+                status.textContent = '✕ not found';
+            }
+        } catch {
+            status.textContent = '';
+        }
+    }, 700);
+}
+
+function updateMeter() {
+    const n = PLATFORMS.filter(p => document.getElementById('h' + cap(p)).value.trim()).length;
+    [1, 2, 3].forEach(i => document.getElementById('seg' + i).classList.toggle('on', i <= n));
+    const labels = [
+        'No accounts connected yet',
+        'Good start — recommendations will work',
+        'Better — cross-platform comparison unlocked',
+        'Best — the full picture of your ability'
+    ];
+    document.getElementById('meterLabel').textContent = labels[n];
+}
+
+async function doRegister() {
+    const handles = {};
+    PLATFORMS.forEach(p => {
+        const v = document.getElementById('h' + cap(p)).value.trim();
+        if (v) handles[p] = v;
+    });
+    const payload = {
+        username: document.getElementById('rgUser').value.trim(),
+        password: document.getElementById('rgPass').value,
+        email: document.getElementById('rgEmail').value.trim(),
+        first_name: document.getElementById('rgFirst').value.trim(),
+        last_name: document.getElementById('rgLast').value.trim(),
+        handles
+    };
+    const btn = document.getElementById('regBtn');
+    btn.disabled = true; clearAlert('regAlert');
+    try {
+        const r = await fetch('/api/register', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not create your account');
+        location.href = Object.keys(handles).length ? nextUrl : '/profile';
+    } catch (e) {
+        alertBox('regAlert', 'error', e.message);
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>

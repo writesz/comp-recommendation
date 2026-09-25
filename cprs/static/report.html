@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — My report</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+
+    .chip-list { display: flex; flex-direction: column; gap: 9px; }
+    .chip {
+        display: flex; align-items: center; gap: 11px;
+        background: var(--bg); border: 1px solid var(--border);
+        border-radius: 7px; padding: 10px 13px; font-size: 0.89rem;
+    }
+    .chip .name { flex: 1; font-weight: 500; }
+    .chip .val { color: var(--text-dim); font-size: 0.83rem; font-variant-numeric: tabular-nums; }
+
+    .trend { font-weight: 600; }
+    .trend-improving { color: var(--green); }
+    .trend-declining { color: var(--red); }
+    .trend-stable { color: var(--text-dim); }
+
+    .plat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 16px; }
+    .plat-card h4 { font-size: 0.9rem; margin-bottom: 10px; display: flex; align-items: center; gap: 9px; }
+    .kv { display: flex; justify-content: space-between; font-size: 0.86rem; padding: 4px 0; }
+    .kv span:first-child { color: var(--text-dim); }
+    .kv span:last-child { font-variant-numeric: tabular-nums; }
+
+    .topic-wrap { max-height: 520px; overflow-y: auto; }
+
+    .coverage-note {
+        margin-top: 11px; padding: 9px 11px; font-size: 0.79rem; line-height: 1.45;
+        color: var(--yellow); background: rgba(210, 153, 34, 0.08);
+        border: 1px solid rgba(210, 153, 34, 0.3); border-radius: 6px;
+    }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav"></nav>
+
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <h1>Your performance report</h1>
+            <p id="subtitle">Everything you've solved, by topic</p>
+        </div>
+        <div class="spacer"></div>
+        <select class="input" id="scope" style="width:auto" onchange="load()">
+            <option value="all">All platforms</option>
+        </select>
+    </div>
+
+    <div class="alert" id="alert"></div>
+    <div class="loading" id="loading"><span class="spinner"></span>Reading your submission history…</div>
+
+    <div id="content" style="display:none">
+
+        <div class="stat-grid" style="margin-bottom:22px">
+            <div class="stat"><div class="stat-value" id="mSolved">—</div><div class="stat-label">Problems solved</div></div>
+            <div class="stat"><div class="stat-value" id="mTopics">—</div><div class="stat-label">Topics covered</div></div>
+            <div class="stat"><div class="stat-value" id="mRate">—</div><div class="stat-label">Solve rate</div></div>
+            <div class="stat"><div class="stat-value" id="mLevel">—</div><div class="stat-label">Difficulty level</div></div>
+        </div>
+
+        <div class="split">
+            <div class="card">
+                <h2>Your strengths</h2>
+                <p class="hint" style="margin-bottom:14px">Topics you clear most reliably</p>
+                <div class="chip-list" id="strengths"></div>
+            </div>
+            <div class="card">
+                <h2>Worth working on</h2>
+                <p class="hint" style="margin-bottom:14px">Where your solve rate drops — what recommendations target</p>
+                <div class="chip-list" id="weaknesses"></div>
+            </div>
+        </div>
+
+        <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+            <h2 class="section-title">Recent form</h2>
+            <a href="/contests" style="font-size:0.88rem">See full contest history →</a>
+        </div>
+        <div class="split" id="recent"></div>
+
+        <h2 class="section-title">Every topic you've touched</h2>
+        <div class="card" style="padding:8px">
+            <div class="topic-wrap">
+                <table class="table">
+                    <thead><tr>
+                        <th>Topic</th>
+                        <th class="num">Solved</th>
+                        <th class="num">Attempted</th>
+                        <th style="width:150px">Solve rate</th>
+                        <th class="num">Avg difficulty</th>
+                    </tr></thead>
+                    <tbody id="topicRows"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div style="height:60px"></div>
+    </div>
+
+</div>
+
+<script src="/static/nav.js"></script>
+<script>
+let me = null;
+
+(async function () {
+    me = await renderNav('/report');
+    if (!me) return;
+
+    const handles = me.handles || {};
+    const scope = document.getElementById('scope');
+    PLATFORMS.filter(p => handles[p]).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p;
+        o.textContent = PLATFORM_LABEL[p] + ' · ' + handles[p];
+        scope.appendChild(o);
+    });
+
+    if (!Object.keys(handles).length) {
+        showAlert('alert', 'info',
+            'Connect a platform account in your profile and your report will appear here.');
+        document.getElementById('subtitle').textContent = 'No accounts connected yet';
+        return;
+    }
+    load();
+})();
+
+async function load() {
+    const scope = document.getElementById('scope').value;
+    const loading = document.getElementById('loading');
+    const content = document.getElementById('content');
+    hideAlert('alert');
+    loading.classList.add('show');
+    content.style.display = 'none';
+    try {
+        const r = await fetch(`/api/report?platform=${scope}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Could not build your report');
+        render(d);
+        content.style.display = 'block';
+        if (d.errors && Object.keys(d.errors).length) {
+            showAlert('alert', 'error', Object.values(d.errors).join(' · '));
+        }
+    } catch (e) {
+        showAlert('alert', 'error', e.message);
+    } finally {
+        loading.classList.remove('show');
+    }
+}
+
+function render(d) {
+    const s = d.summary;
+    document.getElementById('mSolved').textContent = (s.total_solved || 0).toLocaleString();
+    document.getElementById('mTopics').textContent = s.topics_covered;
+    document.getElementById('mRate').textContent = Math.round((s.solve_rate || 0) * 100) + '%';
+    document.getElementById('mLevel').textContent = (s.difficulty_level || 0).toFixed(2);
+
+    document.getElementById('subtitle').textContent =
+        d.scope === 'all'
+            ? `Merged across ${s.platforms} connected account${s.platforms === 1 ? '' : 's'}`
+            : PLATFORM_LABEL[d.scope] + ' only';
+
+    const chip = t => `
+      <div class="chip">
+        <span class="name">${escapeHtml(t.topic)}</span>
+        ${bar(t.solve_rate)}
+        <span class="val">${Math.round(t.solve_rate * 100)}% · ${t.solved}/${t.attempted}</span>
+      </div>`;
+
+    document.getElementById('strengths').innerHTML =
+        d.strengths.length ? d.strengths.map(chip).join('')
+                           : '<div class="empty" style="padding:18px">Not enough data yet</div>';
+    document.getElementById('weaknesses').innerHTML =
+        d.weaknesses.length ? d.weaknesses.map(chip).join('')
+                            : '<div class="empty" style="padding:18px">Not enough data yet</div>';
+
+    document.getElementById('recent').innerHTML = Object.entries(d.per_platform).map(([p, v]) => `
+      <div class="plat-card">
+        <h4><span class="pill platform-${p}">${PLATFORM_LABEL[p]}</span>
+            <span style="color:var(--text-dim);font-weight:400">${escapeHtml(v.handle)}</span></h4>
+        <div class="kv"><span>Total solved</span><span>${v.total_solved.toLocaleString()}</span></div>
+        ${v.rating ? `<div class="kv"><span>Rating</span><span>${v.rating}</span></div>` : ''}
+        <div class="kv"><span>Last ${v.recent.last_n} problems</span>
+             <span>${v.recent.solved}/${v.recent.attempted}</span></div>
+        <div class="kv"><span>Recent solve rate</span>
+             <span>${Math.round(v.recent.solve_rate * 100)}%</span></div>
+        <div class="kv"><span>Avg difficulty</span><span>${v.recent.avg_difficulty.toFixed(2)}</span></div>
+        <div class="kv"><span>Trend</span>
+             <span class="trend trend-${v.recent.trend}">${v.recent.trend}</span></div>
+        ${v.coverage && v.coverage.note
+            ? `<div class="coverage-note">${escapeHtml(v.coverage.note)}</div>` : ''}
+        <div class="kv" style="display:block;margin-top:8px">
+          <span>Recently practised</span>
+          <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">
+            ${(v.recent.topics_practiced || []).slice(0, 8)
+               .map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') || '<span class="val">—</span>'}
+          </div>
+        </div>
+      </div>`).join('');
+
+    document.getElementById('topicRows').innerHTML = d.topics.map(t => `
+      <tr>
+        <td>${escapeHtml(t.topic)}</td>
+        <td class="num">${t.solved}</td>
+        <td class="num">${t.attempted}</td>
+        <td><div style="display:flex;align-items:center;gap:9px">
+            ${bar(t.solve_rate)}
+            <span class="val" style="font-size:0.8rem">${Math.round(t.solve_rate * 100)}%</span>
+        </div></td>
+        <td class="num">${t.avg_difficulty ? t.avg_difficulty.toFixed(2) : '—'}</td>
+      </tr>`).join('');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPRS — Practice that knows what you've already solved</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    .hero { padding: 88px 0 72px; text-align: center; }
+    .hero h1 {
+        font-size: 3rem; line-height: 1.15; letter-spacing: -0.03em;
+        max-width: 760px; margin: 0 auto 20px;
+    }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero p.sub { font-size: 1.15rem; color: var(--text-dim); max-width: 620px; margin: 0 auto 32px; }
+    .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-note { margin-top: 16px; font-size: 0.85rem; color: var(--text-dim); }
+
+    .badge-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 26px; flex-wrap: wrap; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; }
+    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; }
+    .feature .icon {
+        width: 38px; height: 38px; border-radius: 9px; background: rgba(88,166,255,0.12);
+        display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-bottom: 14px;
+    }
+    .feature h3 { font-size: 1.02rem; margin-bottom: 7px; }
+    .feature p { color: var(--text-dim); font-size: 0.92rem; }
+
+    .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; counter-reset: step; }
+    .step { padding: 22px; border-left: 2px solid var(--border); }
+    .step::before {
+        counter-increment: step; content: counter(step);
+        display: flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 50%;
+        background: var(--accent-dim); color: #fff; font-size: 0.8rem; font-weight: 700; margin-bottom: 12px;
+    }
+    .step h3 { font-size: 0.98rem; margin-bottom: 6px; }
+    .step p { color: var(--text-dim); font-size: 0.9rem; }
+
+    .cta-band {
+        background: linear-gradient(135deg, rgba(88,166,255,0.1), rgba(188,140,255,0.07));
+        border: 1px solid var(--border); border-radius: 14px;
+        padding: 44px 32px; text-align: center; margin-top: 64px;
+    }
+    .cta-band h2 { font-size: 1.7rem; margin-bottom: 10px; letter-spacing: -0.02em; }
+    .cta-band p { color: var(--text-dim); margin-bottom: 24px; }
+
+    .subscribe { display: flex; gap: 10px; max-width: 460px; margin: 18px auto 0; }
+    .subscribe .input { flex: 1; }
+    @media (max-width: 560px) { .hero h1 { font-size: 2.1rem; } .subscribe { flex-direction: column; } }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+    <div class="nav-inner">
+        <a href="/" class="brand">C<span>PRS</span></a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#dataset">Dataset</a>
+        </div>
+        <div class="nav-right" id="navRight">
+            <a href="/login" class="btn btn-outline btn-sm">Log in</a>
+            <a href="/register" class="btn btn-sm">Get started</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+
+    <section class="hero">
+        <div class="badge-row">
+            <span class="pill platform-codeforces">Codeforces</span>
+            <span class="pill platform-atcoder">AtCoder</span>
+            <span class="pill platform-leetcode">LeetCode</span>
+        </div>
+        <h1>Stop guessing <em>what to solve next</em></h1>
+        <p class="sub">
+            CPRS reads your solve history across Codeforces, AtCoder and LeetCode,
+            works out which topics are actually holding you back, and recommends the
+            next problems worth your time — at the right difficulty, from any platform.
+        </p>
+        <div class="hero-cta">
+            <a href="/register" class="btn btn-lg">Create your account</a>
+            <a href="#how" class="btn btn-lg btn-outline">See how it works</a>
+        </div>
+        <p class="hero-note" id="heroNote">Free while in development · Connect one platform or all three</p>
+    </section>
+
+    <h2 class="section-title" id="features">What the platform does</h2>
+    <div class="features">
+        <div class="feature">
+            <div class="icon">🎯</div>
+            <h3>Finds your real weak spots</h3>
+            <p>Every problem you've solved is mapped onto a unified topic taxonomy, so
+               "I'm bad at DP" becomes a measured per-topic solve rate you can act on.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">🔀</div>
+            <h3>Recommends across platforms</h3>
+            <p>Difficulty is normalised onto one scale, so a Codeforces rating and a
+               LeetCode Hard can be compared — and your AtCoder practice can be answered
+               with the right Codeforces problem.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">📈</div>
+            <h3>Targets the right difficulty</h3>
+            <p>Recommendations sit just above your current level — hard enough to
+               teach you something, not so hard you stall.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">🏷️</div>
+            <h3>Fills in missing metadata</h3>
+            <p>AtCoder publishes no topic tags, so CPRS predicts them with a classifier
+               trained on tagged Codeforces statements — 9,000+ problems made searchable
+               by topic.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">📊</div>
+            <h3>Reports your progress</h3>
+            <p>A per-platform report of every topic you've touched, your strengths,
+               your weak areas and whether your recent form is improving.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">🏆</div>
+            <h3>Tracks your contest form</h3>
+            <p>Your full rating history on every platform, with the patterns behind it —
+               whether you've plateaued, how consistent your rounds are, and how far
+               you are from your peak.</p>
+        </div>
+        <div class="feature">
+            <div class="icon">💬</div>
+            <h3>Explains every suggestion</h3>
+            <p>No black box. Each recommendation states why it was picked — which weak
+               topic it targets and how it matches your level.</p>
+        </div>
+    </div>
+
+    <h2 class="section-title" id="how">How it works</h2>
+    <div class="how">
+        <div class="step">
+            <h3>Connect your accounts</h3>
+            <p>Add your handles at sign-up. Public data only — we never ask for a
+               platform password.</p>
+        </div>
+        <div class="step">
+            <h3>We build your profile</h3>
+            <p>Your submissions become a per-topic mastery map and a normalised
+               difficulty level.</p>
+        </div>
+        <div class="step">
+            <h3>Get ranked problems</h3>
+            <p>Scored on topic gap, difficulty fit, popularity and diversity — each
+               with a reason attached.</p>
+        </div>
+        <div class="step">
+            <h3>Track your progress</h3>
+            <p>Come back for an updated report as your solve history grows.</p>
+        </div>
+    </div>
+
+    <h2 class="section-title" id="dataset">Built on a unified dataset</h2>
+    <div class="stat-grid" id="statGrid">
+        <div class="stat"><div class="stat-value" id="sProblems">—</div><div class="stat-label">Problems indexed</div></div>
+        <div class="stat"><div class="stat-value" id="sPlatforms">3</div><div class="stat-label">Platforms unified</div></div>
+        <div class="stat"><div class="stat-value" id="sTags">—</div><div class="stat-label">Unified topic tags</div></div>
+        <div class="stat"><div class="stat-value" id="sDiff">—</div><div class="stat-label">With difficulty</div></div>
+    </div>
+
+    <div class="cta-band">
+        <h2>The more platforms you connect, the better it gets</h2>
+        <p>
+            One account gives useful recommendations. Three gives CPRS the full picture of
+            your ability — a topic you avoid on one platform is caught by another, and
+            your difficulty level is calibrated from everything you've solved.
+        </p>
+        <a href="/register" class="btn btn-lg">Create your account</a>
+    </div>
+
+</div>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer-inner">
+            <div style="max-width:380px">
+                <a href="/" class="brand">C<span>PRS</span></a>
+                <p style="margin-top:10px">
+                    A cross-platform practice recommender for competitive programmers.
+                    Built as a final-year research project.
+                </p>
+            </div>
+            <div style="flex:1;min-width:280px">
+                <h3 style="color:var(--text);font-size:0.95rem;margin-bottom:8px">Stay in the loop</h3>
+                <p>Get occasional updates, or send a suggestion — we read every one.</p>
+                <div class="alert" id="subAlert"></div>
+                <div class="subscribe">
+                    <input class="input" type="email" id="subEmail" placeholder="you@example.com">
+                    <button class="btn" id="subBtn" onclick="subscribe()">Subscribe</button>
+                </div>
+                <textarea class="input" id="subMsg" rows="2" placeholder="Optional: a suggestion or something you wish it did"
+                          style="margin-top:10px;resize:vertical"></textarea>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<script>
+// If already signed in, the nav should take you into the product, not to login.
+fetch('/api/me').then(r => r.json()).then(d => {
+    if (d.logged_in) {
+        document.getElementById('navRight').innerHTML =
+            '<a href="/app" class="btn btn-sm">Open dashboard</a>';
+        document.getElementById('heroNote').textContent =
+            'Signed in as ' + d.username;
+        document.querySelectorAll('.hero-cta a, .cta-band a').forEach(a => {
+            if (a.getAttribute('href') === '/register') {
+                a.setAttribute('href', '/app');
+                a.textContent = 'Go to my dashboard';
+            }
+        });
+    }
+}).catch(() => {});
+
+fetch('/api/stats').then(r => r.json()).then(d => {
+    document.getElementById('sProblems').textContent = d.total_problems.toLocaleString();
+    document.getElementById('sPlatforms').textContent = Object.keys(d.platforms).length;
+    document.getElementById('sTags').textContent = d.unified_tags;
+    document.getElementById('sDiff').textContent = d.with_difficulty.toLocaleString();
+}).catch(() => {});
+
+async function subscribe() {
+    const email = document.getElementById('subEmail').value.trim();
+    const message = document.getElementById('subMsg').value.trim();
+    const alert = document.getElementById('subAlert');
+    const btn = document.getElementById('subBtn');
+    alert.className = 'alert';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email, message})
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Something went wrong');
+        alert.className = 'alert alert-ok show';
+        alert.textContent = 'Thanks — you\'re on the list.';
+        document.getElementById('subEmail').value = '';
+        document.getElementById('subMsg').value = '';
+    } catch (e) {
+        alert.className = 'alert alert-error show';
+        alert.textContent = e.message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>
