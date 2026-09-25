@@ -1,0 +1,19 @@
+{
+  "n_users": 2459,
+  "test_a": {
+    "n": 600,
+    "ndcg10_trained": 0.10539748932654033,
+    "ndcg10_folded": 0.10504960592011983,
+    "retention_pct": 99.66993197974318
+  },
+  "test_b": {
+    "n_held_out": 400,
+    "n_trained_on": 2059,
+    "ndcg10_insider": 0.10246432641036708,
+    "ndcg10_folded": 0.10352760121820995,
+    "retention_pct": 101.03770243273202,
+    "wilcoxon_p": 0.934131122002057,
+    "median_diff": 0.0,
+    "mean_diff": 0.00106327480784286
+  }
+}
