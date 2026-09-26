@@ -1122,7 +1122,7 @@ problem puts the full $21{,}568$ at twelve hours of polite fetching --- a budget
 barrier, and exactly the distinction AtCoder could not settle.
 
 %======================================================================
-\section[Evaluation Methodology \textnormal{\small(1,196 words)}]{Evaluation Methodology}
+\section[Evaluation Methodology \textnormal{\small(1,147 words)}]{Evaluation Methodology}
 \label{sec:eval}
 %======================================================================
 
@@ -1183,12 +1183,10 @@ rank $i$ is relevant.
 
 The five are reported together because each is blind to something the others see.
 HitRate answers the product question --- did the user get \emph{anything} useful? --- but
-cannot distinguish one hit from five. Precision and Recall trade against each other and
-are both distorted here by variable test-set sizes: because $|\mathcal{R}|$ is capped at
-$10$ but often smaller, Precision@10 is bounded above by $|\mathcal{R}|/10$, and
-Recall@10 cannot reach $1$ for a user with $20$ held-out items. MRR captures only the
-first hit, which matters for a interface showing a short list but ignores everything
-below it. \ndcg{} is our headline metric because it is the only one of the five that is
+cannot tell one hit from five. Precision and Recall trade against each other and are both
+distorted by variable test-set sizes: with $|\mathcal{R}|$ capped at $10$ but often
+smaller, Precision@10 is bounded by $|\mathcal{R}|/10$. MRR captures only the first hit,
+which matters for a short list but ignores everything below it. \ndcg{} is our headline metric because it is the only one of the five that is
 sensitive to \emph{both} how many relevant items appear and where they appear, via the
 $1/\log_2(i+1)$ discount --- the right shape for a ranked list a user reads from the top.
 Reporting all five at three cut-offs also guards against a conclusion that holds only at
@@ -1197,12 +1195,10 @@ cut-offs, which is the check that licenses quoting $K=10$ throughout.
 
 One consequence deserves flagging, because it affects how the results table should be
 read: all five metrics are computed per user and then averaged unweighted, so a user with
-$200$ training solves counts exactly as much as one with $5$. This is the right choice
-for a system judged on its service to individuals rather than on aggregate traffic, but
-it means the headline numbers are not dominated by the heavy users who supply most of the
-interactions --- and, since heavy users are the hardest to predict
-(Section~\ref{sec:results}), it makes the averages lower than an interaction-weighted
-alternative would.
+$200$ training solves counts exactly as much as one with $5$. This is right for a system judged on its service to individuals rather than aggregate
+traffic, but it means the headline numbers are not dominated by heavy users --- and since
+those are the hardest to predict (Section~\ref{sec:results}), the averages sit lower than
+an interaction-weighted alternative would give.
 
 \subsection{Models and Baselines}
 Seven models are compared, and the set is constructed so that each one isolates a
@@ -1226,22 +1222,20 @@ differing only in the cold ingredient, separate ``blending is wrong'' from ``thi
 particular ingredient is weak''.
 
 \subsection{Significance and Uncertainty}
-Per-user \ndcg{}@10 is strongly non-normal and zero-inflated --- most users receive no hit
-at all, so the distribution is a spike at zero with a thin right tail --- which rules out a
-$t$-test on the raw scores. We therefore test model differences with the paired Wilcoxon
-signed-rank test~\cite{wilcoxon1945}, which compares the \emph{same} users under two
-models and so removes the large between-user variance in difficulty-of-prediction that
-would otherwise swamp the model effect.
+Per-user \ndcg{}@10 is strongly non-normal and zero-inflated --- a spike at zero with a
+thin right tail, since most users receive no hit --- which rules out a $t$-test on the raw
+scores. We therefore test model differences with the paired Wilcoxon signed-rank
+test~\cite{wilcoxon1945}, which compares the \emph{same} users under two models and so
+removes the between-user variance that would otherwise swamp the model effect.
 
-Significance alone would not be informative at this sample size: with $n=2{,}459$ paired
-observations, differences far too small to matter will reach any conventional threshold.
-We therefore report a rank-biserial effect size alongside every $p$-value, and give
-bootstrap ($2{,}000$-resample) $95\%$ confidence intervals on each model's mean so that
-the results can be read as intervals rather than points. This combination --- paired
-non-parametric test, effect size, and interval estimates against a strong baseline --- is
-what Dacrema et al.~\cite{dacrema2019} identify as missing from much of the recommender
-literature, and following it is part of why two of this project's headline findings are
-negative.
+Significance alone is uninformative at this sample size: with $n=2{,}459$ paired
+observations, differences far too small to matter clear any conventional threshold.
+We therefore report a rank-biserial effect size alongside every $p$-value, and bootstrap
+($2{,}000$-resample) $95\%$ confidence intervals on each model's mean, so results read as
+intervals rather than points. This combination --- paired non-parametric test, effect size, and intervals against a
+strong baseline --- is what Dacrema et al.~\cite{dacrema2019} find missing from much of
+the recommender literature, and following it is part of why two headline findings here
+are negative.
 
 \subsection{Cold-Start and Cross-Platform Designs}
 Cold start is probed with a \emph{fold-in simulation}: using fixed item factors from the
@@ -1458,19 +1452,16 @@ AtCoder $+$ 5 CF (correct live) & \textbf{0.066} & $+40\%$ \\
 \end{figure}
 
 %======================================================================
-\section[Discussion \textnormal{\small(512 words)}]{Discussion}
+\section[Discussion \textnormal{\small(466 words)}]{Discussion}
 \label{sec:discussion}
 %======================================================================
 
 \subsection{The Journey in Retrospect}
-The project's arc is its argument. We began with two textbook expectations --- that a
-hybrid would win and that cross-platform aggregation would help --- and the evaluation
-refuted both, then pointed to a better answer. The hybrid lost because the test population
-was not cold; cross-platform collaboration lost because problem sets are disjoint and
-multi-platform users are uniformly experienced; and the eventual win came from
-recognising that \emph{ability}, not co-occurrence, is the transferable quantity. That
-each step was forced by evidence rather than assumed is, we believe, the strongest thing
-about the work.
+The project's arc is its argument. Both opening expectations were refuted, and each
+refutation was diagnostic: the hybrid lost because the test population was not cold;
+cross-platform collaboration lost because problem sets are disjoint and multi-platform
+users uniformly experienced; and the win came from recognising that \emph{ability}, not
+co-occurrence, is the transferable quantity.
 
 \subsection{Interpretation against the Objectives}
 Objectives O1--O3 (dataset, tagger, interaction data) and O7 (web app) are delivered as
@@ -1485,10 +1476,9 @@ $r=0.77$ and worth a $35$--$40\%$ cold-start improvement.
 Two counter-intuitive findings carry real weight. That content-based recommendation is
 mis-aligned with next-solve prediction clarifies a common conflation: optimising for
 pedagogical diversity is a different objective from predicting behaviour, and the two can
-anti-correlate. That collaborative transfer fails across platforms delineates the boundary
-of a widely assumed benefit and confirms the cross-domain literature's warning: transfer
-needs either shared items or a shared latent cause; skill is such a cause and transfers,
-whereas co-occurrence over disjoint catalogues does not.
+anti-correlate. That collaborative transfer fails across platforms bounds a widely assumed benefit and
+confirms the cross-domain literature's warning: transfer needs shared items or a shared
+latent cause. Skill is such a cause; co-occurrence over disjoint catalogues is not.
 
 \subsection{Design Implications: When Each Signal Helps}
 The results compose into a clear operating policy. Use CF to decide \emph{which} problem
@@ -1539,11 +1529,11 @@ rubrics) are copyrighted and are likewise excluded from the repository. All thir
 libraries are open-source and cited.
 
 %======================================================================
-\section[Conclusion and Future Work \textnormal{\small(182 words)}]{Conclusion and Future Work}
+\section[Conclusion and Future Work \textnormal{\small(185 words)}]{Conclusion and Future Work}
 \label{sec:conclusion}
 %======================================================================
-CPRS delivers a curated cross-platform competitive-programming resource, an NLP tagger
-that recovers AtCoder's missing topics, a working web application, and --- its analytical
+CPRS delivers a curated four-platform competitive-programming resource, an NLP tagger
+that recovers missing topics on two of them, a working web application, and --- its analytical
 core --- a rigorous, honest evaluation of recommendation across platforms. Collaborative
 filtering is the strongest next-solve predictor; content-based ranking is mis-aligned
 with the task; cold start is sharp and best met by a near-hard switch. The central
