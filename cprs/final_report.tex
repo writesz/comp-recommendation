@@ -15,7 +15,7 @@
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 \usepackage{parskip}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds, calc}
 \usepackage{xcolor}
 \definecolor{cprsblue}{HTML}{2C7FB8}
 \definecolor{cprsgreen}{HTML}{31A354}
@@ -58,10 +58,10 @@ Recommendation System\par}
 \noindent Competitive-programming platforms host millions of problems but give
 users little personalised guidance on what to solve next, and each platform is an
 isolated silo with its own difficulty scale and tag taxonomy. This project builds
-CPRS, a cross-platform recommender spanning Codeforces, AtCoder and LeetCode. We
-curate a unified dataset of 24{,}335 problems with normalised difficulty and a
-shared taxonomy of 43 canonical topics, recover AtCoder's missing topic tags with an
-NLP transfer tagger, and assemble a real user$\times$problem interaction dataset
+CPRS, a cross-platform recommender spanning Codeforces, AtCoder, CodeChef and
+LeetCode. We curate a unified dataset of 45{,}903 problems with normalised difficulty
+and a shared taxonomy of 43 canonical topics, recover AtCoder's missing topic tags
+with an NLP transfer tagger, and assemble a real user$\times$problem interaction dataset
 (2{,}459 users, 532{,}059 solves) by sampling the Codeforces API. On a held-out
 temporal split we compare six recommenders under five ranking metrics with paired
 significance testing. Collaborative filtering dominates (\ndcg{}@10 $=0.096$, versus
@@ -89,13 +89,14 @@ benefit.
 \pagenumbering{arabic}
 
 %======================================================================
-\section[Introduction \textnormal{\small(1,014 words)}]{Introduction}
+\section[Introduction \textnormal{\small(1,015 words)}]{Introduction}
 \label{sec:intro}
 %======================================================================
 
 \subsection{Motivation and Context}
 Competitive programming has grown into a global educational practice. Platforms such
-as Codeforces, AtCoder and LeetCode collectively host millions of algorithmic problems
+as Codeforces, AtCoder, CodeChef and LeetCode collectively host millions of algorithmic
+problems
 and serve tens of millions of users~\cite{wasik2018}, functioning both as training
 grounds for algorithmic reasoning and as \emph{de-facto} assessment instruments in
 technical hiring, where developers report that preparation centres on exactly this kind
@@ -372,8 +373,8 @@ contribution that addresses it.
 \toprule
 \textbf{Gap in prior work} & \textbf{CPRS contribution} \\
 \midrule
-No dataset unifies behaviour or problems across CF/AtCoder/LeetCode & Curated unified
-catalogue (24{,}335 problems) + real interaction dataset (\S\ref{sec:design-data},
+No dataset unifies behaviour or problems across CF/AtCoder/CodeChef/LeetCode & Curated
+unified catalogue (45{,}903 problems) + real interaction dataset (\S\ref{sec:design-data},
 \S\ref{sec:impl-data}) \\
 AtCoder problems lack topic tags, preventing topic-based analysis & NLP transfer tagger
 from CF statements, cross-validated (\S\ref{sec:tagger}) \\
@@ -391,7 +392,7 @@ cross-platform skill estimator (\S\ref{sec:design-skill}) \\
 \end{table}
 
 %======================================================================
-\section[Requirements and Design \textnormal{\small(1,036 words)}]{Requirements and Design}
+\section[Requirements and Design \textnormal{\small(1,520 words)}]{Requirements and Design}
 \label{sec:design}
 %======================================================================
 
@@ -402,8 +403,8 @@ choosing early problems, intermediates navigating the largest and most heterogen
 problem space, and advanced users seeking targeted practice --- as well as candidates
 preparing for technical interviews. From this the following requirements follow.
 
-\paragraph{Functional.} (F1) ingest problems from Codeforces, AtCoder and LeetCode into
-a unified schema; (F2) normalise difficulty to a common scale and tags to a common
+\paragraph{Functional.} (F1) ingest problems from Codeforces, AtCoder, CodeChef and
+LeetCode into a unified schema; (F2) normalise difficulty to a common scale and tags to a common
 taxonomy; (F3) infer missing AtCoder tags; (F4) build a user skill profile from
 submission history on any supported platform; (F5) generate a ranked, personalised
 problem list drawing from all platforms; (F6) present recommendations with difficulty,
@@ -415,9 +416,73 @@ raw data; (N3) respectful use of third-party APIs (rate limiting, caching); (N4)
 handling of user credentials; (N5) evaluability --- every claim supported by a metric
 and, where comparative, a significance test.
 
+\subsection{Platform Selection}
+\label{sec:design-platforms}
+Which judges to support is the first design decision, and it constrains every later
+one: a platform that cannot be joined to the others contributes nothing but rows. The
+requirements above imply three distinct things a candidate must supply, and they are not
+equally easy to obtain. A judge must expose (i) an enumerable \emph{catalogue} of
+problems, (ii) a per-problem \emph{difficulty} signal, without which F5's difficulty
+matching cannot rank it, and (iii) a public per-user \emph{solve history}, without which
+its users cannot enter the interaction matrix at all. Layer (iii) is the binding
+constraint, because it is the only one a platform can withhold outright.
+
+Table~\ref{tab:platforms} surveys the candidates against these three layers. The
+right-hand column reports the fraction of our Codeforces cohort holding an account under
+the same handle --- the mechanism by which a second platform is bridged to the first
+(Section~\ref{sec:impl-cohort}) --- measured by probing a random sample of handles.
+
+\begin{table}[h]
+\centering
+\caption{Platform survey. \emph{History} is public per-user solve data; \emph{overlap} is
+the share of sampled Codeforces handles with an account of the same name. Adopted
+platforms in bold.}
+\label{tab:platforms}
+\small
+\begin{tabular}{llccccl}
+\toprule
+Platform & Access & Catalogue & Difficulty & Tags & Overlap & Outcome \\
+\midrule
+\textbf{Codeforces} & REST API  & 11{,}263 & rating   & yes  & ---   & adopted (anchor) \\
+\textbf{AtCoder}    & community & 9{,}095  & modelled & no   & 15.5\% & adopted \\
+\textbf{CodeChef}   & site JSON & 21{,}568 & partial  & weak & 20\%  & adopted \\
+\textbf{LeetCode}   & GraphQL   & 3{,}977  & ordinal  & yes  & ---   & adopted (catalogue) \\
+\midrule
+DMOJ        & REST API    & 5{,}269 & points & yes & 2\% & rejected: no bridge \\
+HackerRank  & internal    & tracks  & none   & yes & --- & rejected: no difficulty \\
+Codewars    & REST API    & no list & kyu    & yes & --- & rejected: not contest problems \\
+Kattis      & HTML only   & scraped & 1--10  & no  & --- & rejected: scrape-only \\
+CSES        & HTML only   & 300     & none   & no  & --- & rejected: nothing to normalise \\
+Aizu        & API removed & ---     & ---    & --- & --- & rejected: endpoint withdrawn \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The survey yields a conclusion sharper than the selection itself, and one that
+generalises beyond this project: \emph{the cost of adding a platform is set by how it
+exposes user histories, not by the quality of its API}. DMOJ has the cleanest interface
+of anything surveyed --- a documented, versioned REST API serving public per-user
+submissions without authentication --- and is nonetheless useless here, because only
+$2\%$ of our cohort holds an account, leaving too thin a bridge to learn anything
+across. CodeChef inverts every one of those properties: its official API has been
+withdrawn, its histories must be walked a dozen rows of HTML at a time, and it throttles
+aggressively enough to force exponential backoff --- yet it matches $20\%$ of the cohort,
+a denser bridge than AtCoder's, and so earns its place. API quality is a cost; overlap is
+the value, and the two are uncorrelated.
+
+Three further asymmetries shaped what each adopted platform is used \emph{for}, rather
+than whether to adopt it. Codeforces is the anchor because it alone couples a large
+public catalogue to unrestricted submission histories, which is why the evaluation is
+conducted Codeforces-side. LeetCode publishes only the most recent accepted submissions
+per user, so it contributes a catalogue and a live profile but no evaluable history.
+CodeChef, uniquely, reports \emph{every} verdict rather than only successes, so
+attempted-but-unsolved problems are directly observable there --- the negative signal
+whose absence bounds the models elsewhere (Section~\ref{sec:threats}).
+
 \subsection{System Architecture}
 CPRS is organised as a data pipeline feeding a set of recommendation models, exposed
-through a web application (Figure~\ref{fig:arch}). Platform fetchers collect raw problem
+through a web application (Figure~\ref{fig:arch}). Fetchers for the four platforms of
+Section~\ref{sec:design-platforms} collect raw problem
 catalogues and user submissions; an ETL stage normalises them into a unified schema; the
 NLP tagger enriches AtCoder problems; and the recommendation models are evaluated
 offline and served live.
@@ -433,14 +498,16 @@ offline and served live.
     arr/.style={-{Stealth[length=2mm]}, cprsgrey, thick}]
   \node[src] (cf) {Codeforces API};
   \node[src, right=of cf] (ac) {AtCoder (kenkoooo)};
-  \node[src, right=of ac] (lc) {LeetCode GraphQL};
-  \node[box, below=of ac] (etl) {ETL: unify difficulty + tags\\(normalisation, taxonomy)};
-  \node[box, below left=8mm and -6mm of etl] (tag) {NLP transfer tagger\\(AtCoder tags)};
+  \node[src, right=of ac] (cc) {CodeChef JSON};
+  \node[src, right=of cc] (lc) {LeetCode GraphQL};
+  \node[box, below=8mm of $(ac)!0.5!(cc)$] (etl) {ETL: unify difficulty + tags\\(normalisation, taxonomy)};
+  \node[box, below left=8mm and -6mm of etl] (tag) {NLP transfer tagger\\(AtCoder + CodeChef tags)};
   \node[box, below right=8mm and -6mm of etl] (mat) {Interaction matrix\\+ temporal split};
   \node[mdl, below=18mm of etl] (models) {Recommendation models\\content $\cdot$ CF (ALS) $\cdot$ hybrid $\cdot$ skill};
   \node[box, below left=8mm and 2mm of models] (eval) {Offline evaluation\\(metrics, significance)};
   \node[box, below right=8mm and 2mm of models] (app) {FastAPI + web UI\\(live recommendations)};
-  \draw[arr] (cf) -- (etl); \draw[arr] (ac) -- (etl); \draw[arr] (lc) -- (etl);
+  \draw[arr] (cf) -- (etl); \draw[arr] (ac) -- (etl);
+  \draw[arr] (cc) -- (etl); \draw[arr] (lc) -- (etl);
   \draw[arr] (etl) -- (tag); \draw[arr] (etl) -- (mat);
   \draw[arr] (tag) -- (models); \draw[arr] (mat) -- (models);
   \draw[arr] (models) -- (eval); \draw[arr] (models) -- (app);
@@ -452,15 +519,23 @@ models, offline evaluation and the served application.}
 
 \subsection{Unified Data Schema and Difficulty Normalisation}
 \label{sec:design-data}
-The three platforms express difficulty incompatibly: Codeforces uses an integer rating
+The four platforms express difficulty incompatibly: Codeforces uses an integer rating
 (roughly 800--3500); AtCoder uses a community model-estimated real value that can be
-negative~\cite{kenkoooo2024}; LeetCode uses three ordinal levels. We map all three onto a
+negative~\cite{kenkoooo2024}; CodeChef publishes an Elo-like problem rating for only a
+quarter of its catalogue; LeetCode uses three ordinal levels. We map all four onto a
 common $[0,1]$ scale by min--max normalisation with platform-specific bounds:
 \begin{align}
 d_{\text{CF}}   &= \operatorname{clip}\!\Big(\tfrac{r-800}{3500-800},\,0,\,1\Big), &
-d_{\text{AC}}   &= \operatorname{clip}\!\Big(\tfrac{b+500}{4000+500},\,0,\,1\Big), &
+d_{\text{AC}}   &= \operatorname{clip}\!\Big(\tfrac{b+500}{4000+500},\,0,\,1\Big), \\
+d_{\text{CC}}   &= \operatorname{clip}\!\Big(\tfrac{r-200}{4000-200},\,0,\,1\Big), &
 d_{\text{LC}}   &\in \{0.2,\,0.5,\,0.85\}.
 \end{align}
+Unlike the other three, CodeChef publishes no documented rating range, so its bounds are
+set empirically from the catalogue: over the $5{,}520$ rated problems of $21{,}568$,
+ratings span $19$--$4076$ with 1st and 99th percentiles at $193$ and $3660$, so
+$[200, 4000]$ covers the mass while clipping a thin tail at each end. Unrated problems
+are flagged by sentinel values rather than omitted, and are rejected rather than
+silently normalised to zero.
 Tags from all platforms are folded into a shared taxonomy of 43 canonical topics
 (Appendix~\ref{app:taxonomy}), and every problem receives a stable identifier
 (\texttt{cf:1234A}, \texttt{ac:abc123\_a}, \texttt{lc:42}). Two assumptions are explicit:
@@ -619,7 +694,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(1,821 words)}]{Implementation}
+\section[Implementation \textnormal{\small(1,898 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -641,13 +716,14 @@ isolation.}
 \toprule
 \textbf{Package} & \textbf{Lines} & \textbf{Responsibility} \\
 \midrule
-\texttt{fetchers/} & 299 & One module per platform (Codeforces, AtCoder, LeetCode);
-each exposes the same \texttt{fetch\_user\_submissions} interface, hiding three very
-different APIs behind one signature. \\
-\texttt{models/} & 1{,}333 & Recommenders (\texttt{content}, \texttt{collaborative},
+\texttt{fetchers/} & 659 & One module per platform (Codeforces, AtCoder, CodeChef,
+LeetCode); each exposes the same \texttt{fetch\_user\_submissions} interface, hiding four
+very different APIs --- REST, community mirror, scraped HTML and GraphQL --- behind one
+signature. \\
+\texttt{models/} & 2{,}444 & Recommenders (\texttt{content}, \texttt{collaborative},
 \texttt{hybrid}), the online skill estimator, the unified schema and the serving
 engine. \\
-\texttt{scripts/} & 3{,}315 & 21 pipeline stages: acquisition, dataset construction,
+\texttt{scripts/} & 4{,}122 & 27 pipeline stages: acquisition, dataset construction,
 splitting, the six-model evaluation, significance testing, cold-start and
 cross-platform studies, figures and reported statistics. \\
 \texttt{app.py} & 286 & FastAPI application: auth, handle management, live
@@ -668,7 +744,13 @@ rather than the two originally planned.
 \subsection{Data Acquisition}
 Problem catalogues are fetched once per platform. Codeforces submissions come from
 \texttt{user.status}; AtCoder from the kenkoooo \texttt{/v3/user/submissions} endpoint,
-paginated by timestamp; LeetCode from two public GraphQL queries. All fetchers enforce a
+paginated by timestamp; LeetCode from two public GraphQL queries. CodeChef is the
+awkward case: its official API was withdrawn and now returns \texttt{401}, so the
+fetcher uses the same public endpoints that serve the site itself, reading the catalogue
+as JSON but reconstructing user histories from the paginated submissions widget, roughly
+a dozen HTML rows per request. It also throttles an order of magnitude harder than the
+others --- a half-second loop is rejected within about a dozen requests --- so its
+client backs off exponentially on \texttt{429} and retries. All fetchers enforce a
 polite request delay and retry with exponential backoff, and write results
 incrementally to JSON Lines so a long harvest is \emph{resumable} --- re-running skips
 already-fetched users. Raw solve events are committed to disk so the exact dataset is
