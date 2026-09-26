@@ -8,11 +8,16 @@ Codeforces, AtCoder and LeetCode count — and those counts are quoted
 throughout the report and underpin the evaluation, which was run against this
 exact snapshot. Adding a platform must not perturb the three already measured.
 
-So this script treats the existing dataset as immutable: it loads
-cprs_unified_tagged.json, drops any CodeChef rows already present (making the
-merge idempotent and re-runnable as enrichment progresses), converts the
-CodeChef catalogue, appends it, and writes the result back out in both JSON
-and CSV form. Rows for the other three platforms are passed through untouched.
+So this script treats the existing rows as immutable: for each dataset file it
+drops any CodeChef rows already present (making the merge idempotent and
+re-runnable as enrichment progresses), converts the CodeChef catalogue and
+appends it, passing the other three platforms through untouched.
+
+It writes two pairs, not one. cprs_unified.{json,csv} is the pre-tagger
+snapshot and cprs_unified_tagged.{json,csv} the post-tagger one;
+report_stats.py measures what the NLP tagger contributed by differencing them.
+CodeChef therefore has to enter both carrying only its own coarse tags, or the
+tagger would appear to have supplied labels the catalogue already had.
 
 Usage:
     python3 -m scripts.add_codechef_to_dataset
@@ -37,6 +42,13 @@ console = Console()
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 RAW_DIR = DATA_DIR / "raw"
 
+# The pre-tagger snapshot and the tagged one are kept as a matched pair:
+# report_stats.py measures the tagger's contribution by differencing them, so
+# CodeChef has to enter BOTH carrying only its own coarse `computed_tags`.
+# scripts/auto_tag_codechef.py then edits the tagged file alone, and the
+# difference between the two is exactly what the model added.
+UNTAGGED_JSON = DATA_DIR / "cprs_unified.json"
+UNTAGGED_CSV = DATA_DIR / "cprs_unified.csv"
 UNIFIED_JSON = DATA_DIR / "cprs_unified_tagged.json"
 UNIFIED_CSV = DATA_DIR / "cprs_unified_tagged.csv"
 CC_CATALOGUE = RAW_DIR / "cc_problems.json"
@@ -71,20 +83,32 @@ def summarise(rows: list, title: str) -> None:
     console.print(t)
 
 
+def write_pair(rows: list, json_path: Path, csv_path: Path) -> None:
+    json_path.write_text(json.dumps(rows, indent=2))
+    df = pd.DataFrame(rows)
+    df["tags_original_str"] = df["tags_original"].apply(lambda x: "|".join(x or []))
+    df["tags_unified_str"] = df["tags_unified"].apply(lambda x: "|".join(x or []))
+    df[CSV_COLS].to_csv(csv_path, index=False)
+
+
+def merge_into(path: Path, cc_rows: list) -> list:
+    """Replace the CodeChef rows of one dataset file, leaving others untouched."""
+    existing = json.loads(path.read_text())
+    kept = [r for r in existing if r["platform"] != "codechef"]
+    if len(kept) != len(existing):
+        logger.info(f"{path.name}: dropped {len(existing) - len(kept):,} existing "
+                    "CodeChef rows (merge is idempotent)")
+    return kept + cc_rows
+
+
 def main(dry_run: bool) -> None:
-    if not UNIFIED_JSON.exists():
-        raise SystemExit(f"{UNIFIED_JSON} missing")
+    for required in (UNIFIED_JSON, UNTAGGED_JSON):
+        if not required.exists():
+            raise SystemExit(f"{required} missing")
     if not CC_CATALOGUE.exists():
         raise SystemExit(f"{CC_CATALOGUE} missing — fetch the catalogue first")
 
-    existing = json.loads(UNIFIED_JSON.read_text())
-    logger.info(f"Loaded {len(existing):,} problems from the unified dataset")
-    summarise(existing, "Before")
-
-    kept = [r for r in existing if r["platform"] != "codechef"]
-    if len(kept) != len(existing):
-        logger.info(f"Dropped {len(existing) - len(kept):,} existing CodeChef rows "
-                    "(merge is idempotent)")
+    summarise(json.loads(UNIFIED_JSON.read_text()), "Before")
 
     details = {}
     if CC_DETAILS.exists():
@@ -98,22 +122,18 @@ def main(dry_run: bool) -> None:
     cc_rows = [p.model_dump() for p in convert_cc_problems(raw, details)]
     logger.info(f"Converted {len(cc_rows):,} CodeChef problems")
 
-    merged = kept + cc_rows
+    merged = merge_into(UNIFIED_JSON, cc_rows)
+    merged_untagged = merge_into(UNTAGGED_JSON, cc_rows)
     summarise(merged, "After")
 
     if dry_run:
         console.print("\n[yellow]dry run — nothing written[/yellow]")
         return
 
-    UNIFIED_JSON.write_text(json.dumps(merged, indent=2))
-
-    df = pd.DataFrame(merged)
-    df["tags_original_str"] = df["tags_original"].apply(lambda x: "|".join(x or []))
-    df["tags_unified_str"] = df["tags_unified"].apply(lambda x: "|".join(x or []))
-    df[CSV_COLS].to_csv(UNIFIED_CSV, index=False)
-
-    logger.success(f"Wrote {len(merged):,} problems to {UNIFIED_JSON.name} "
-                   f"and {UNIFIED_CSV.name}")
+    write_pair(merged, UNIFIED_JSON, UNIFIED_CSV)
+    write_pair(merged_untagged, UNTAGGED_JSON, UNTAGGED_CSV)
+    logger.success(f"Wrote {len(merged):,} problems to the tagged pair and "
+                   f"{len(merged_untagged):,} to the pre-tagger pair")
 
 
 if __name__ == "__main__":

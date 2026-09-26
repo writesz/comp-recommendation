@@ -694,7 +694,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(1,898 words)}]{Implementation}
+\section[Implementation \textnormal{\small(1,874 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -745,13 +745,11 @@ rather than the two originally planned.
 Problem catalogues are fetched once per platform. Codeforces submissions come from
 \texttt{user.status}; AtCoder from the kenkoooo \texttt{/v3/user/submissions} endpoint,
 paginated by timestamp; LeetCode from two public GraphQL queries. CodeChef is the
-awkward case: its official API was withdrawn and now returns \texttt{401}, so the
-fetcher uses the same public endpoints that serve the site itself, reading the catalogue
-as JSON but reconstructing user histories from the paginated submissions widget, roughly
-a dozen HTML rows per request. It also throttles an order of magnitude harder than the
-others --- a half-second loop is rejected within about a dozen requests --- so its
-client backs off exponentially on \texttt{429} and retries. All fetchers enforce a
-polite request delay and retry with exponential backoff, and write results
+awkward case: its official API was withdrawn and now returns \texttt{401}, so the fetcher
+uses the endpoints serving the site itself, reading the catalogue as JSON but
+reconstructing histories from a submissions widget that yields a dozen HTML rows per
+request and throttles an order of magnitude harder than the others. All fetchers enforce
+a polite request delay and retry with exponential backoff, and write results
 incrementally to JSON Lines so a long harvest is \emph{resumable} --- re-running skips
 already-fetched users. Raw solve events are committed to disk so the exact dataset is
 reproducible despite live API drift (a user's history grows over time).
@@ -930,7 +928,7 @@ is a finding or a bug. Two things guard against the second possibility: an autom
 suite over the components where a silent error would be least visible, and a set of
 working habits around surprising results.
 
-\paragraph{Automated tests.} A \texttt{pytest} suite of $36$ tests covers three areas
+\paragraph{Automated tests.} A \texttt{pytest} suite of $119$ tests covers seven areas
 (Table~\ref{tab:tests}). The choice of targets is deliberate. An error in the ranking
 metrics --- a wrong \ndcg{} denominator, an off-by-one in the rank of the first hit ---
 would scale every model by the same factor and so would \emph{not} disturb the model
@@ -952,15 +950,25 @@ verify the data the results are actually computed on.}
 \toprule
 \textbf{Module} & \textbf{Tests} & \textbf{What is asserted} \\
 \midrule
+\texttt{test\_contests.py} & 35 & Rating-history normalisation for each platform's
+payload shape; delta reconstruction where only post-contest ratings are published;
+trend, volatility and calibration confidence. \\
+\texttt{test\_codechef.py} & 28 & Sentinel difficulties rejected rather than normalised
+to zero; the taxonomy used as a whitelist so setter usernames are discarded; submission
+rows parsed from the cell attribute rather than the intermittent link. \\
 \texttt{test\_metrics.py} & 14 & \ndcg{}/MRR/precision/recall/hit against hand-computed
 values; the \ndcg{} denominator's $\min(|\mathcal{R}|,K)$ convention; masking of
 already-solved items; monotonicity in $K$. \\
 \texttt{test\_skill.py} & 13 & Convergence in mean to the $q$-quantile; no upward drift
 on solve-only data; seed-then-correct composition; clipping; tolerance of missing
 difficulties. \\
+\texttt{test\_foldin.py} & 12 & Fold-in shape and determinism; that a folded-in user
+reproduces the batch-trained factors for an unchanged history. \\
 \texttt{test\_dataset.py} & 9 & $k$-core fixed point; binary implicit feedback; no
 train/test leakage; train $+$ test partitions the matrix; every user present in both;
 metadata agrees with the artefacts. \\
+\texttt{test\_topic\_targeting.py} & 8 & Weak-topic selection; that absent tags are not
+read as evidence of weakness across platform vocabularies. \\
 \bottomrule
 \end{tabularx}
 \end{table}
