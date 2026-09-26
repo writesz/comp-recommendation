@@ -40,6 +40,7 @@ from fetchers.leetcode import (
     fetch_user_contest_history as fetch_lc_contests,
 )
 from models import contests as contest_analysis
+from models.collaborative import CollaborativeModel
 from models.recommender import RecommenderEngine, TopicMastery
 from models.database import (
     create_user, authenticate, create_session, get_user_by_session,
@@ -63,6 +64,58 @@ if not dataset_path.exists():
     dataset_path = DATA_DIR / "cprs_unified.json"
 
 engine = RecommenderEngine(str(dataset_path))
+
+# Collaborative filtering, loaded once and applied by folding each request's
+# user into the fixed item factors. Optional: without the artefact the app
+# serves content-based recommendations exactly as before.
+#
+# One solve inside the item space is enough for CF to be worth using — the
+# cold-start study measured nDCG@10 rising from 0.001 with no history to 0.135
+# after a single observed solve. Below that CF has no opinion at all and the
+# content scorer carries the request.
+CF_MODEL_PATH = DATA_DIR / "cf_model.npz"
+MIN_CF_SOLVES = 1
+
+try:
+    cf_model = CollaborativeModel.load(CF_MODEL_PATH) if CF_MODEL_PATH.exists() else None
+except Exception as e:  # pragma: no cover - a corrupt artefact must not take the app down
+    logger.warning(f"Could not load CF model from {CF_MODEL_PATH}: {e}")
+    cf_model = None
+
+if cf_model is None:
+    logger.warning(
+        "No CF model loaded — recommendations will be content-based only. "
+        "Build one with: python scripts/train_cf.py"
+    )
+
+
+def _cf_affinity(solved_ids: set) -> tuple:
+    """
+    Collaborative-filtering scores for one user, via fold-in.
+
+    Returns (affinity, info) where affinity is {cprs_id: score} over the
+    problems CF can speak about, or None when it cannot speak at all.
+    """
+    if cf_model is None or not cf_model.problem_ids:
+        return None, {"available": False, "reason": "no model loaded"}
+
+    cols = [cf_model.column_of[pid] for pid in solved_ids if pid in cf_model.column_of]
+    info = {
+        "available": False,
+        "matched_solves": len(cols),
+        "item_space": len(cf_model.problem_ids),
+        "catalogue": len(engine.problems),
+    }
+    if len(cols) < MIN_CF_SOLVES:
+        info["reason"] = (
+            "none of your solved problems are in the interaction dataset, so "
+            "collaborative filtering has no signal for you yet"
+        )
+        return None, info
+
+    scores = cf_model.score_folded(cols)
+    info["available"] = True
+    return dict(zip(cf_model.problem_ids, scores.tolist())), info
 
 app = FastAPI(title="CPRS", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -624,6 +677,7 @@ async def recommend(
         )
         profile.difficulty_level = calibration["level"]
         stretch = calibration["stretch"]
+        cf_affinity, cf_info = _cf_affinity(profile.solved_problem_ids)
 
     elif handle:
         if handle_platform not in PLATFORMS:
@@ -643,6 +697,7 @@ async def recommend(
         )
         calibration = contest_analysis.blend_calibrations([], profile.difficulty_level)
         stretch = calibration["stretch"]
+        cf_affinity, cf_info = _cf_affinity(profile.solved_problem_ids)
     else:
         raise HTTPException(401, "Log in to get recommendations")
 
@@ -651,7 +706,8 @@ async def recommend(
         platform_filter = [p.strip() for p in platforms.split(",")]
 
     recs = engine.recommend(
-        profile, n=n, platforms=platform_filter, difficulty_stretch=stretch
+        profile, n=n, platforms=platform_filter, difficulty_stretch=stretch,
+        cf_affinity=cf_affinity,
     )
 
     return {
@@ -666,6 +722,7 @@ async def recommend(
             "topic_mastery": _mastery_rows(profile, limit=20),
         },
         "calibration": calibration,
+        "collaborative": cf_info,
         "recent_performance": {
             platform: {
                 "last_n": rp.last_n,

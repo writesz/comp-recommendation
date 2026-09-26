@@ -514,6 +514,7 @@ class RecommenderEngine:
         target_topics: Optional[list] = None,
         difficulty_stretch: float = 0.1,
         diversity_weight: float = 0.3,
+        cf_affinity: Optional[dict] = None,
     ) -> list:
         """
         Generate recommendations for a user.
@@ -525,6 +526,22 @@ class RecommenderEngine:
             target_topics: focus on specific topics (None = auto-detect weak areas)
             difficulty_stretch: how much harder than current level (0.1 = 10% harder)
             diversity_weight: balance between targeting weaknesses vs exploration
+            cf_affinity: optional {cprs_id: collaborative-filtering score}. Where a
+                problem has one it replaces the topic-gap term, because the offline
+                evaluation found CF the stronger affinity signal by an order of
+                magnitude (nDCG@10 0.0959 against 0.0012 for content). CF covers
+                only the problems that appear in the interaction matrix, so the
+                topic-gap term still carries everything else. Both paths feed the
+                same weighted sum, so the two populations stay comparable.
+
+                Note this is deliberately not the offline `hybrid` model, which
+                blends the two proportionally to interaction density. Bucketed
+                analysis (scripts/analyse_hybrid_crossover.py) showed that blend
+                never beats CF at any history size, and is worst exactly where it
+                was meant to help: for users with under ten solves it halves
+                nDCG@10, because a small alpha hands most of the weight to a
+                signal that scores at chance. Falling back to content only when
+                CF has nothing to say is the behaviour the evidence supports.
         """
         # Determine target difficulty range
         target_center = profile.difficulty_level + difficulty_stretch
@@ -537,6 +554,15 @@ class RecommenderEngine:
 
         # Build topic weights (higher = more important to practice)
         topic_weights = self._compute_topic_weights(profile, target_topics)
+
+        # CF scores are unbounded dot products while the topic-gap term is
+        # [0, 1]; min-max them onto the same scale so one weight means the same
+        # thing on both paths.
+        cf_lo = cf_span = None
+        if cf_affinity:
+            vals = np.fromiter(cf_affinity.values(), dtype=float)
+            cf_lo = float(vals.min())
+            cf_span = float(vals.max()) - cf_lo or 1.0
 
         # Score all problems
         scored = []
@@ -568,16 +594,22 @@ class RecommenderEngine:
             # 1. Difficulty fit (gaussian around target)
             diff_score = math.exp(-0.5 * ((diff - target_center) / difficulty_sigma) ** 2)
 
-            # 2. Topic gap score (how much do these tags target weak areas?)
-            topic_score = 0.0
+            # 2. Affinity: CF where we have it, topic gap everywhere else.
             matching_topics = []
-            for tag in tags:
-                w = topic_weights.get(tag, 0.0)
-                if w > 0:
-                    topic_score += w
-                    matching_topics.append(tag)
-            if len(tags) > 0:
-                topic_score /= len(tags)  # normalize by number of tags
+            cf_raw = cf_affinity.get(cprs_id) if cf_affinity else None
+            if cf_raw is not None:
+                topic_score = (cf_raw - cf_lo) / cf_span
+                from_cf = True
+            else:
+                from_cf = False
+                topic_score = 0.0
+                for tag in tags:
+                    w = topic_weights.get(tag, 0.0)
+                    if w > 0:
+                        topic_score += w
+                        matching_topics.append(tag)
+                if len(tags) > 0:
+                    topic_score /= len(tags)  # normalize by number of tags
 
             # 3. Popularity bonus (slight preference for well-tested problems)
             solve_count = problem.get("solve_count") or 0
@@ -593,6 +625,8 @@ class RecommenderEngine:
 
             # Build reasons
             reasons = []
+            if from_cf:
+                reasons.append("Solved next by people with a similar solve history")
             if matching_topics:
                 reasons.append(f"Targets weak topics: {', '.join(matching_topics[:3])}")
             if abs(diff - target_center) < difficulty_sigma:

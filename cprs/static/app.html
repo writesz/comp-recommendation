@@ -45,6 +45,7 @@
     <div class="alert" id="alert"></div>
 
     <div id="calibration" class="calib" style="display:none"></div>
+    <div id="collab" class="calib" style="display:none"></div>
 
     <div id="summary" style="display:none">
         <div class="stat-grid" style="margin-bottom:22px">
@@ -96,12 +97,31 @@ async function load() {
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || 'Could not load recommendations');
         renderCalibration(d.calibration, d.profile);
+        renderCollaborative(d.collaborative);
         renderSummary(d.profile);
         renderList(d.recommendations);
     } catch (e) {
         showAlert('alert', 'error', e.message);
     } finally {
         loading.classList.remove('show');
+    }
+}
+
+function renderCollaborative(c) {
+    const el = document.getElementById('collab');
+    if (!c) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    if (c.available) {
+        el.innerHTML =
+            `Ranked by <b>collaborative filtering</b> — matched ${c.matched_solves.toLocaleString()} ` +
+            `of your solved problems against ${c.item_space.toLocaleString()} problems with ` +
+            `community solve data.<span class="weak">For the remaining ` +
+            `${(c.catalogue - c.item_space).toLocaleString()} problems there is no community ` +
+            `signal, so those are ranked by topic and difficulty instead.</span>`;
+    } else {
+        el.innerHTML =
+            `Ranked by <b>topic and difficulty</b>.<span class="weak">${escapeHtml(c.reason || '')}` +
+            ` The interaction dataset covers Codeforces and AtCoder only.</span>`;
     }
 }
 

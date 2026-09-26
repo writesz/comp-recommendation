@@ -1,0 +1,82 @@
+{
+  "note": "nDCG@10 is not comparable across buckets because IDCG@10 saturates for users with more than ten held-out items; only the within-bucket paired CF-vs-hybrid comparison is meaningful.",
+  "buckets": [
+    {
+      "bucket": "0-10",
+      "n": 240,
+      "mean_alpha": 0.39439815282821655,
+      "ndcg10_cf": 0.24826238069123588,
+      "ndcg10_hybrid": 0.122066070527216,
+      "ndcg10_hybrid_pop": 0.1945549040597245,
+      "cf_minus_hybrid": 0.1261963101640199,
+      "wilcoxon_p": 1.6945421390531132e-09,
+      "hybrid_win_rate": 0.058333333333333334
+    },
+    {
+      "bucket": "10-25",
+      "n": 366,
+      "mean_alpha": 0.6271393299102783,
+      "ndcg10_cf": 0.1868703034164031,
+      "ndcg10_hybrid": 0.1653814502329904,
+      "ndcg10_hybrid_pop": 0.18330659031006788,
+      "cf_minus_hybrid": 0.021488853183412704,
+      "wilcoxon_p": 0.0003453041187036225,
+      "hybrid_win_rate": 0.15846994535519127
+    },
+    {
+      "bucket": "25-50",
+      "n": 328,
+      "mean_alpha": 0.7829251885414124,
+      "ndcg10_cf": 0.1252152444181815,
+      "ndcg10_hybrid": 0.1240172148703703,
+      "ndcg10_hybrid_pop": 0.12637415815410902,
+      "cf_minus_hybrid": 0.0011980295478111885,
+      "wilcoxon_p": 0.6083533690280739,
+      "hybrid_win_rate": 0.19207317073170732
+    },
+    {
+      "bucket": "50-100",
+      "n": 379,
+      "mean_alpha": 0.8782916069030762,
+      "ndcg10_cf": 0.08221264712175179,
+      "ndcg10_hybrid": 0.08549136784548612,
+      "ndcg10_hybrid_pop": 0.08096535056024418,
+      "cf_minus_hybrid": -0.003278720723734335,
+      "wilcoxon_p": 0.08104833419704989,
+      "hybrid_win_rate": 0.13192612137203166
+    },
+    {
+      "bucket": "100-250",
+      "n": 511,
+      "mean_alpha": 0.9416746497154236,
+      "ndcg10_cf": 0.045140820685580826,
+      "ndcg10_hybrid": 0.04638647011714935,
+      "ndcg10_hybrid_pop": 0.045904279136697014,
+      "cf_minus_hybrid": -0.0012456494315685254,
+      "wilcoxon_p": 0.024303816535723867,
+      "hybrid_win_rate": 0.09980430528375733
+    },
+    {
+      "bucket": "250-500",
+      "n": 354,
+      "mean_alpha": 0.9719216823577881,
+      "ndcg10_cf": 0.02665590355023123,
+      "ndcg10_hybrid": 0.026849906376472502,
+      "ndcg10_hybrid_pop": 0.025767231512940737,
+      "cf_minus_hybrid": -0.000194002826241272,
+      "wilcoxon_p": 0.37869227062720767,
+      "hybrid_win_rate": 0.06497175141242938
+    },
+    {
+      "bucket": "500+",
+      "n": 281,
+      "mean_alpha": 0.989328145980835,
+      "ndcg10_cf": 0.010691107271192022,
+      "ndcg10_hybrid": 0.010636104849605702,
+      "ndcg10_hybrid_pop": 0.010620523439580596,
+      "cf_minus_hybrid": 5.500242158631985e-05,
+      "wilcoxon_p": 0.5929800980174267,
+      "hybrid_win_rate": 0.0035587188612099642
+    }
+  ]
+}
