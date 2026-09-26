@@ -100,6 +100,38 @@ def from_atcoder(history: list) -> list:
     return out
 
 
+def from_codechef(history: list) -> list:
+    """
+    Normalise the CodeChef rating history scraped from the profile page.
+
+    Like LeetCode, CodeChef publishes only the rating *after* each contest,
+    so deltas are reconstructed by walking the timeline in order. Unlike
+    LeetCode, its ratings sit on the same Elo-like scale as its problem
+    difficulties, so they calibrate directly.
+    """
+    out = []
+    previous = None
+    for h in sorted(history, key=lambda x: x.get("end_date") or ""):
+        new = h.get("rating")
+        end = h.get("end_date") or ""
+        try:
+            ts = int(datetime.strptime(end, "%Y-%m-%d %H:%M:%S").timestamp())
+        except (ValueError, TypeError):
+            ts = 0
+        out.append(ContestRecord(
+            platform="codechef",
+            name=h.get("name") or "Contest",
+            timestamp=ts,
+            place=h.get("rank"),
+            old_rating=previous,
+            new_rating=new,
+            delta=(new - previous) if new is not None and previous is not None else None,
+            rated=True,
+        ))
+        previous = new
+    return out
+
+
 def from_leetcode(payload: dict) -> list:
     """
     Normalise the LeetCode contest history.
@@ -420,6 +452,7 @@ def difficulty_calibration(analysis: dict, platform: str) -> Optional[dict]:
     """
     from models.unified_schema import (
         normalize_cf_difficulty, normalize_ac_difficulty,
+        normalize_cc_difficulty,
     )
 
     summary = analysis.get("summary") or {}
@@ -447,6 +480,10 @@ def difficulty_calibration(analysis: dict, platform: str) -> Optional[dict]:
         level = normalize_cf_difficulty(int(rating))
     elif platform == "atcoder":
         level = normalize_ac_difficulty(float(rating))
+    elif platform == "codechef":
+        # CodeChef rates problems on the same scale it rates users, so the
+        # normaliser that maps a problem rating maps a user rating too.
+        level = normalize_cc_difficulty(float(rating))
     else:
         clamped = max(LC_RATING_MIN, min(LC_RATING_MAX, rating))
         level = (clamped - LC_RATING_MIN) / (LC_RATING_MAX - LC_RATING_MIN)
@@ -515,7 +552,8 @@ def blend_calibrations(calibrations: list, history_level: float) -> dict:
     level = weight * contest_level + (1 - weight) * history_level
     best = max(usable, key=lambda c: c["confidence"])
 
-    labels = {"codeforces": "Codeforces", "atcoder": "AtCoder", "leetcode": "LeetCode"}
+    labels = {"codeforces": "Codeforces", "atcoder": "AtCoder",
+              "codechef": "CodeChef", "leetcode": "LeetCode"}
     names = ", ".join(labels.get(c["source"], c["source"]) for c in usable)
 
     return {

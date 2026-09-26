@@ -1,18 +1,25 @@
 """
 Build the unified CPRS dataset.
 
-Fetches problems from Codeforces, AtCoder, and LeetCode, normalizes them
-to a common schema, and saves as a single CSV + JSON dataset.
+Fetches problems from Codeforces, AtCoder, CodeChef and LeetCode, normalizes
+them to a common schema, and saves as a single CSV + JSON dataset.
 
 This script produces the cross-platform dataset that is a core contribution
 of the CPRS project — no existing dataset combines competitive programming
-problems across these three platforms with normalized difficulty and tags.
+problems across these four platforms with normalized difficulty and tags.
+
+Note that CodeChef's catalogue endpoint returns difficulty and solve counts
+but no tags: those live on the per-problem detail endpoint, one request each.
+Tag and statement enrichment is therefore a separate pass
+(scripts/enrich_codechef.py), exactly as AtCoder's tags come from the NLP
+tagger rather than from its catalogue.
 
 Usage:
     python -m scripts.build_dataset
 """
 import json
 import sys
+from typing import Optional
 from pathlib import Path
 
 import pandas as pd
@@ -24,14 +31,16 @@ from tqdm import tqdm
 # Add parent dir to path so we can import fetchers/models
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fetchers import codeforces, atcoder, leetcode
+from fetchers import codeforces, atcoder, codechef, leetcode
 from models.unified_schema import (
     Platform,
     UnifiedProblem,
     normalize_cf_difficulty,
     normalize_ac_difficulty,
+    normalize_cc_difficulty,
     normalize_lc_difficulty,
     unify_tags,
+    unify_tags_strict,
 )
 
 console = Console()
@@ -98,6 +107,59 @@ def convert_ac_problems(raw_problems: list, models: dict) -> list:
     return unified
 
 
+def convert_cc_problems(raw_problems: list, details: Optional[dict] = None) -> list:
+    """
+    Convert CodeChef problems to unified schema.
+
+    `details` optionally maps problem code -> detail payload from the
+    enrichment pass; when absent the problem still carries difficulty and
+    solve statistics, just no tags. Acceptance rate is derived from the
+    distinct-solver and total-submission counts the catalogue reports.
+    """
+    details = details or {}
+    unified = []
+    for p in tqdm(raw_problems, desc="Converting CC problems"):
+        code = p.get("code", "")
+        if not code:
+            continue
+        contest = p.get("contest_code") or "PRACTICE"
+
+        detail = details.get(code, {})
+        # computed_tags is CodeChef's own taxonomy; user_tags is crowd-sourced
+        # and mixes topics with setter usernames, so both go through the strict
+        # mapper that treats the unified taxonomy as a whitelist.
+        tags_original = list(detail.get("computed_tags") or []) + \
+            list(detail.get("user_tags") or [])
+
+        total = _as_int(p.get("total_submissions"))
+        solved = _as_int(p.get("distinct_successful_submissions"))
+        acceptance = (solved / total) if total and solved is not None else None
+
+        unified.append(UnifiedProblem(
+            platform=Platform.CODECHEF,
+            platform_id=code,
+            cprs_id=f"cc:{code}",
+            url=f"https://www.codechef.com/problems/{code}",
+            name=p.get("name", ""),
+            contest_id=str(contest),
+            difficulty_raw=_as_int(p.get("difficulty_rating")),
+            difficulty_normalized=normalize_cc_difficulty(p.get("difficulty_rating")),
+            tags_original=tags_original,
+            tags_unified=unify_tags_strict(tags_original),
+            solve_count=solved,
+            acceptance_rate=acceptance,
+        ))
+    return unified
+
+
+def _as_int(value) -> Optional[int]:
+    """CodeChef returns numeric fields as strings; sentinels become None."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def convert_lc_problems(raw_problems: list) -> list:
     """Convert LeetCode problems to unified schema."""
     unified = []
@@ -134,7 +196,7 @@ def print_dataset_summary(df: pd.DataFrame) -> None:
     table.add_column("With Difficulty", justify="right")
     table.add_column("With Tags", justify="right")
 
-    for platform in ["codeforces", "atcoder", "leetcode"]:
+    for platform in ["codeforces", "atcoder", "codechef", "leetcode"]:
         subset = df[df["platform"] == platform]
         with_diff = subset["difficulty_normalized"].notna().sum()
         with_tags = (subset["tags_unified"].apply(len) > 0).sum()
@@ -182,12 +244,14 @@ def main() -> None:
     cf_raw = codeforces.fetch_all_problems()
     ac_raw = atcoder.fetch_all_problems()
     ac_models = atcoder.fetch_difficulty_models()
+    cc_raw = codechef.fetch_all_problems()
     lc_raw = leetcode.fetch_all_problems()
 
     # Save raw data
     raw_dir = DATA_DIR / "raw"
     raw_dir.mkdir(exist_ok=True)
-    for name, data in [("cf_problems", cf_raw), ("ac_problems", ac_raw), ("lc_problems", lc_raw)]:
+    for name, data in [("cf_problems", cf_raw), ("ac_problems", ac_raw),
+                       ("cc_problems", cc_raw), ("lc_problems", lc_raw)]:
         with open(raw_dir / f"{name}.json", "w") as f:
             json.dump(data, f, indent=2)
     with open(raw_dir / "ac_models.json", "w") as f:
@@ -197,11 +261,23 @@ def main() -> None:
     # --- Convert to unified schema ---
     console.print("\n[bold cyan]Step 2: Normalizing to unified schema...[/bold cyan]\n")
 
+    # CodeChef tags live behind a per-problem endpoint, so reuse the
+    # enrichment pass's output when it has been run.
+    cc_details = {}
+    cc_details_path = raw_dir / "cc_details.json"
+    if cc_details_path.exists():
+        cc_details = json.loads(cc_details_path.read_text())
+        logger.info(f"Loaded CodeChef detail for {len(cc_details)} problems")
+    else:
+        logger.warning("No cc_details.json — CodeChef problems will carry no tags. "
+                       "Run scripts/enrich_codechef.py to populate them.")
+
     cf_unified = convert_cf_problems(cf_raw)
     ac_unified = convert_ac_problems(ac_raw, ac_models)
+    cc_unified = convert_cc_problems(cc_raw, cc_details)
     lc_unified = convert_lc_problems(lc_raw)
 
-    all_problems = cf_unified + ac_unified + lc_unified
+    all_problems = cf_unified + ac_unified + cc_unified + lc_unified
     logger.info(f"Total unified problems: {len(all_problems)}")
 
     # --- Save unified dataset ---

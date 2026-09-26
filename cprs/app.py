@@ -34,6 +34,11 @@ from fetchers.atcoder import (
     fetch_user_submissions as fetch_ac_submissions,
     fetch_user_contest_history as fetch_ac_contests,
 )
+from fetchers.codechef import (
+    fetch_user_submissions as fetch_cc_submissions,
+    fetch_user_info as fetch_cc_info,
+    fetch_user_contest_history as fetch_cc_contests,
+)
 from fetchers.leetcode import (
     fetch_user_submissions as fetch_lc_submissions,
     fetch_user_profile as fetch_lc_profile,
@@ -52,12 +57,18 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 STATIC_DIR = BASE_DIR / "static"
 
-PLATFORMS = ("codeforces", "atcoder", "leetcode")
+PLATFORMS = ("codeforces", "atcoder", "codechef", "leetcode")
 PLATFORM_LABELS = {
     "codeforces": "Codeforces",
     "atcoder": "AtCoder",
+    "codechef": "CodeChef",
     "leetcode": "LeetCode",
 }
+
+# CodeChef serves a user's history a dozen rows per request and throttles
+# aggressively, so a full walk is far too slow for a page load. The app reads
+# the most recent pages only; the offline cohort fetch takes the full history.
+CC_LIVE_MAX_PAGES = 15
 
 dataset_path = DATA_DIR / "cprs_unified_tagged.json"
 if not dataset_path.exists():
@@ -145,6 +156,11 @@ def _fetch_platform(platform: str, handle: str) -> tuple:
         subs = fetch_ac_submissions(handle)
         if not subs:
             raise ValueError("no submissions returned")
+    elif platform == "codechef":
+        info = fetch_cc_info(handle)
+        subs = fetch_cc_submissions(handle, max_pages=CC_LIVE_MAX_PAGES)
+        if not subs:
+            raise ValueError("no submissions returned")
     elif platform == "leetcode":
         info = fetch_lc_profile(handle)
         subs = fetch_lc_submissions(handle)
@@ -162,6 +178,9 @@ def _build_profile(platform: str, handle: str):
         profile = engine.build_user_profile(subs, handle, rating=info.get("rating"))
     elif platform == "atcoder":
         profile = engine.build_atcoder_profile(subs, handle)
+    elif platform == "codechef":
+        profile = engine.build_codechef_profile(subs, handle)
+        profile.rating = info.get("rating")
     else:
         profile = engine.build_leetcode_profile(subs, info, handle)
     return profile, subs
@@ -556,6 +575,8 @@ def _contest_records(platform: str, handle: str) -> list:
         records = contest_analysis.from_codeforces(fetch_user_rating_history(handle))
     elif platform == "atcoder":
         records = contest_analysis.from_atcoder(fetch_ac_contests(handle))
+    elif platform == "codechef":
+        records = contest_analysis.from_codechef(fetch_cc_contests(handle))
     else:
         records = contest_analysis.from_leetcode(fetch_lc_contests(handle))
 

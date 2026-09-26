@@ -18,12 +18,30 @@ Where:
 import json
 import math
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 from loguru import logger
 from pydantic import BaseModel, Field
+
+
+def _codechef_epoch(sub: dict) -> float:
+    """
+    Sort key for a CodeChef submission.
+
+    The widget renders times as "08:36 PM 10/06/26" (day/month/two-digit year)
+    rather than a unix timestamp. Unparseable or missing times sort oldest so
+    that a markup change degrades ordering rather than raising.
+    """
+    raw = (sub or {}).get("time")
+    if not raw:
+        return 0.0
+    try:
+        return datetime.strptime(raw.strip(), "%I:%M %p %d/%m/%y").timestamp()
+    except (ValueError, TypeError):
+        return 0.0
 
 
 class TopicMastery(BaseModel):
@@ -252,6 +270,86 @@ class RecommenderEngine:
 
         return profile
 
+    def build_codechef_profile(self, submissions: list, handle: str) -> UserProfile:
+        """
+        Build a user profile from CodeChef submissions.
+
+        CodeChef differs from the other three sources in one useful way: the
+        submission widget reports every verdict, not just accepted ones, so
+        attempted-but-unsolved problems are directly observable rather than
+        inferred. That makes `overall_solve_rate` a genuine success rate here,
+        and it is the same negative signal the evaluation notes CF lacks.
+
+        Difficulty comes from the unified catalogue rather than a side-car
+        model file, because CodeChef publishes its per-problem rating in the
+        catalogue endpoint itself.
+        """
+        profile = UserProfile(handle=handle, platform="codechef")
+
+        cc_index = {
+            p["platform_id"]: p
+            for p in self.problems
+            if p["platform"] == "codechef"
+        }
+
+        # Per-problem best verdict: accepted wins over any number of failures.
+        problem_solved: dict = {}
+        for sub in submissions:
+            code = sub.get("problem_code", "")
+            if not code:
+                continue
+            problem_solved[code] = problem_solved.get(code, False) or bool(
+                sub.get("accepted")
+            )
+
+        profile.total_attempted = len(problem_solved)
+        solved_codes = {c for c, ok in problem_solved.items() if ok}
+        profile.total_solved = len(solved_codes)
+        profile.overall_solve_rate = (
+            profile.total_solved / profile.total_attempted
+            if profile.total_attempted > 0 else 0.0
+        )
+        profile.solved_problem_ids = {f"cc:{c}" for c in solved_codes}
+
+        # Topic mastery over the catalogue problems we can resolve. Attempts
+        # count every problem touched; solves only those accepted — so an
+        # unsolved attempt lowers mastery rather than being invisible.
+        topic_stats = defaultdict(lambda: {
+            "attempted": 0, "solved": 0, "difficulties": []
+        })
+        solved_diffs = []
+        for code, ok in problem_solved.items():
+            matched = cc_index.get(code)
+            if not matched:
+                continue
+            diff = matched.get("difficulty_normalized")
+            for tag in matched.get("tags_unified", []):
+                topic_stats[tag]["attempted"] += 1
+                if ok:
+                    topic_stats[tag]["solved"] += 1
+                    if diff is not None:
+                        topic_stats[tag]["difficulties"].append(diff)
+            if ok and diff is not None:
+                solved_diffs.append(diff)
+
+        profile.topic_mastery = {}
+        for topic, stats in topic_stats.items():
+            diffs = stats["difficulties"]
+            profile.topic_mastery[topic] = TopicMastery(
+                topic=topic,
+                problems_attempted=stats["attempted"],
+                problems_solved=stats["solved"],
+                solve_rate=(stats["solved"] / stats["attempted"]
+                            if stats["attempted"] > 0 else 0.0),
+                avg_difficulty=float(np.mean(diffs)) if diffs else 0.0,
+                max_difficulty=float(max(diffs)) if diffs else 0.0,
+            )
+
+        if solved_diffs:
+            profile.difficulty_level = float(np.percentile(solved_diffs, 75))
+
+        return profile
+
     def build_leetcode_profile(
         self, submissions: list, user_info: dict, username: str
     ) -> UserProfile:
@@ -421,6 +519,8 @@ class RecommenderEngine:
             sorted_subs = sorted(submissions, key=lambda s: s.get("creationTimeSeconds", 0), reverse=True)
         elif platform == "leetcode":
             sorted_subs = sorted(submissions, key=lambda s: int(s.get("timestamp", 0)), reverse=True)
+        elif platform == "codechef":
+            sorted_subs = sorted(submissions, key=_codechef_epoch, reverse=True)
         else:
             sorted_subs = sorted(submissions, key=lambda s: s.get("epoch_second", 0), reverse=True)
 
@@ -432,6 +532,8 @@ class RecommenderEngine:
                 pid = (sub.get("problem", {}).get("contestId"), sub.get("problem", {}).get("index"))
             elif platform == "leetcode":
                 pid = sub.get("titleSlug", "")
+            elif platform == "codechef":
+                pid = sub.get("problem_code", "")
             else:
                 pid = sub.get("problem_id", "")
 
@@ -450,6 +552,14 @@ class RecommenderEngine:
                     if slug:
                         lc_problem_index[slug] = p
 
+        cc_problem_index = {}
+        if platform == "codechef":
+            cc_problem_index = {
+                p["platform_id"]: p
+                for p in self.problems
+                if p["platform"] == "codechef"
+            }
+
         # Analyze
         solved = 0
         difficulties = []
@@ -467,6 +577,19 @@ class RecommenderEngine:
                 is_solved = True  # recentAcSubmissionList only returns AC
                 slug = sub.get("titleSlug", "")
                 matched = lc_problem_index.get(slug)
+                if matched:
+                    tags = matched.get("tags_unified", [])
+                    diff = matched.get("difficulty_normalized")
+                    if diff is not None:
+                        difficulties.append(diff)
+                else:
+                    tags = []
+            elif platform == "codechef":
+                # CodeChef reports every verdict, so an unsolved attempt is
+                # observed rather than assumed — unlike the LeetCode feed,
+                # which only ever returns accepted submissions.
+                is_solved = bool(sub.get("accepted"))
+                matched = cc_problem_index.get(sub.get("problem_code", ""))
                 if matched:
                     tags = matched.get("tags_unified", [])
                     diff = matched.get("difficulty_normalized")
