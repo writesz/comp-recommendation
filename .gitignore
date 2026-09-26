@@ -12,10 +12,11 @@ cprs/data/*.db
 cprs/data/*.db-shm
 cprs/data/*.db-wal
 
-# Personal working notes — build planning and research log.
+# Personal working notes — build planning, research log, methods crib sheet.
 # Private scratch material, not part of the submitted project.
 cprs/DECISIONS_LOG.md
 cprs/FINAL_PROJECT_PLAN.md
+cprs/METHODS.md
 
 # Copyrighted University of London course materials (exam papers, templates, rubric)
 *.pdf
