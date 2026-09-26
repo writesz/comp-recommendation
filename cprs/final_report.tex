@@ -89,7 +89,7 @@ benefit.
 \pagenumbering{arabic}
 
 %======================================================================
-\section[Introduction \textnormal{\small(1,015 words)}]{Introduction}
+\section[Introduction \textnormal{\small(1,000 words)}]{Introduction}
 \label{sec:intro}
 %======================================================================
 
@@ -177,14 +177,13 @@ questions:
 \subsection{Contributions}
 \label{sec:contributions}
 \begin{enumerate}
-    \item \textbf{A curated cross-platform dataset} of 24{,}335 problems with
-    min--max-normalised difficulty and a 43-topic unified taxonomy, plus a real
-    interaction dataset of 2{,}459 users and 532{,}059 solves, harvested and
-    time-split for offline evaluation (Sections~\ref{sec:design-data},
-    \ref{sec:impl-data}).
-    \item \textbf{An NLP cross-platform transfer tagger} that recovers AtCoder's absent
-    topic tags by training on Codeforces statements, with a cross-validated,
-    calibrated evaluation and a two-tier finding about which tags are text-learnable
+    \item \textbf{A curated cross-platform dataset} of 45{,}903 problems over four
+    judges with min--max-normalised difficulty and a 43-topic unified taxonomy, plus an
+    interaction dataset of 2{,}459 users and 532{,}059 solves, time-split for offline
+    evaluation (Sections~\ref{sec:design-data}, \ref{sec:impl-data}).
+    \item \textbf{An NLP cross-platform transfer tagger} recovering absent topic tags on
+    two further platforms from Codeforces statements, with a calibrated cross-validated
+    evaluation and a two-tier finding about which tags are text-learnable
     (Section~\ref{sec:tagger}).
     \item \textbf{A rigorous comparative evaluation} of six recommenders across five
     ranking metrics, with activity slicing, a cold-start fold-in simulation, paired
@@ -199,8 +198,8 @@ questions:
 
 \subsection{An Evidence-Driven Journey}
 \label{sec:journey}
-It is worth stating at the outset that this project did not unfold as planned, and that
-the divergence is the source of its most interesting findings. We set out expecting a
+This project did not unfold as planned, and the divergence is the source of its best
+findings. We set out expecting a
 \emph{hybrid} recommender to be the centrepiece and cross-platform aggregation to be an
 obvious win. The data refused both expectations. The hybrid did not beat collaborative
 filtering; cross-platform \emph{collaborative} transfer actively hurt; and the
@@ -208,8 +207,8 @@ population that cross-platform cold-start was meant to rescue turned out to bare
 exist. Rather than discard the premise, we followed the evidence to a sharper question
 --- is \emph{skill}, as opposed to co-occurrence, transferable? --- and found that it
 is, strongly. The report is written to make this reasoning visible: each major result
-is presented as a hypothesis tested, sometimes refuted, and refined. This is both more
-honest and, we argue, more instructive than a tidy narrative in which everything worked.
+is presented as a hypothesis tested, sometimes refuted, and refined --- more honest, and
+more instructive, than a tidy narrative in which everything worked.
 
 \subsection{Report Structure}
 Section~\ref{sec:lit} reviews the literature and states the gap. Section~\ref{sec:design}
@@ -392,7 +391,7 @@ cross-platform skill estimator (\S\ref{sec:design-skill}) \\
 \end{table}
 
 %======================================================================
-\section[Requirements and Design \textnormal{\small(1,520 words)}]{Requirements and Design}
+\section[Requirements and Design \textnormal{\small(1,522 words)}]{Requirements and Design}
 \label{sec:design}
 %======================================================================
 
@@ -708,7 +707,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(1,887 words)}]{Implementation}
+\section[Implementation \textnormal{\small(1,745 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -735,9 +734,9 @@ LeetCode); each exposes the same \texttt{fetch\_user\_submissions} interface, hi
 very different APIs --- REST, community mirror, scraped HTML and GraphQL --- behind one
 signature. \\
 \texttt{models/} & 2{,}444 & Recommenders (\texttt{content}, \texttt{collaborative},
-\texttt{hybrid}), the online skill estimator, the unified schema and the serving
-engine. \\
-\texttt{scripts/} & 4{,}122 & 27 pipeline stages: acquisition, dataset construction,
+\texttt{hybrid}), the online skill estimator, the unified schema, cross-platform contest
+normalisation and the serving engine. \\
+\texttt{scripts/} & 4{,}122 & 27 stages: acquisition, dataset construction,
 splitting, the six-model evaluation, significance testing, cold-start and
 cross-platform studies, figures and reported statistics. \\
 \texttt{app.py} & 286 & FastAPI application: auth, handle management, live
@@ -806,21 +805,19 @@ A leave-last-$N$ temporal split (cap $10$, or $20\%$ per user, by solve time) yi
 \label{sec:impl-cohort}
 No directory links a user's identities across platforms, so we form a multi-platform
 cohort by \emph{handle matching}: each Codeforces handle is probed on AtCoder, exploiting
-the common practice of handle reuse. This yields \textbf{392 cross-platform users} and
-$\sim$30{,}000 AtCoder solves, of which problems solved by $\geq3$ cohort members are
-retained as columns of a merged matrix. Handle matching is a heuristic --- a shared handle
-need not be the same person, and some users differ --- and is treated as a stated
-limitation (Section~\ref{sec:threats}).
+the common practice of handle reuse. This yields \textbf{392 cross-platform users} and $\sim$30{,}000 AtCoder solves, of which
+problems solved by $\geq3$ cohort members are retained as columns of a merged matrix.
+Handle matching is a heuristic and is treated as a stated limitation
+(Section~\ref{sec:threats}).
 
 \subsection{Model Implementations}
 \label{sec:impl-models}
 The CF module wraps \texttt{implicit} ALS with $64$ factors, regularisation $0.05$, $20$
 iterations and confidence scale $\alpha=15$ (Appendix~\ref{app:hyper}). Because
-\texttt{implicit} requires a compiled native extension, the module also carries a
-TruncatedSVD fallback behind the same interface, so the pipeline degrades to a pure-Python
-path rather than failing outright on a machine without a working build toolchain --- a
-small piece of defensive engineering that made the results reproducible on a second
-machine without intervention.
+\texttt{implicit} needs a compiled native extension, the module carries a TruncatedSVD
+fallback behind the same interface, so the pipeline degrades to a pure-Python path rather
+than failing on a machine without a build toolchain --- which made the results reproduce
+on a second machine unaided.
 
 Three implementation details are worth setting out, because they are where the real
 difficulty lay.
@@ -855,18 +852,15 @@ $\sim$40-line class holding two floats. \texttt{update()} is a single comparison
 addition --- $O(1)$ per solve with $O(1)$ memory, so it can run in the request path --- while
 \texttt{seed()} initialises $\theta$ to the empirical $q$-quantile of \emph{any} supplied
 difficulty history, which is the mechanism by which an AtCoder history becomes a
-Codeforces prior. Because the two entry points write the same state, seeding and live
-correction compose without special-casing, and the \texttt{atcoder+cf\_5} condition of
-Section~\ref{sec:results-xplat} is literally a \texttt{seed()} call followed by five
-\texttt{update()} calls. The estimate is clipped to $[0,1]$ so that a pathological history
-cannot push it off the difficulty scale.
+Codeforces prior. Because both entry points write the same state, seeding and live correction compose
+without special-casing: the \texttt{atcoder+cf\_5} condition of
+Section~\ref{sec:results-xplat} is a \texttt{seed()} call followed by five
+\texttt{update()} calls. The estimate is clipped to $[0,1]$.
 
 \subsection{Web Application}
 \label{sec:impl-web}
-A FastAPI application serves the system live. It exposes registration, login/logout and
-session endpoints (\texttt{/api/register}, \texttt{/api/login}, \texttt{/api/logout},
-\texttt{/api/me}), platform-handle management (\texttt{/api/handles}), a recommendation
-endpoint (\texttt{/api/recommend}) and catalogue statistics (\texttt{/api/stats}). A
+A FastAPI application serves the system live, exposing session and registration
+endpoints, platform-handle management, recommendation and catalogue statistics. A
 SQLite schema (Figure~\ref{fig:er}) stores \texttt{users} (salted SHA-256 password
 hashes), \texttt{platform\_handles} and \texttt{sessions} (cookie tokens); the credential
 database is never committed. The schema is deliberately minimal, and the reason is a
@@ -874,9 +868,7 @@ design position rather than an omission: CPRS stores \emph{identity}, not behavi
 user's solve history is re-fetched from the origin platforms on demand rather than
 mirrored locally, so the application holds no copy of anyone's submission record, cannot
 drift out of date with the judges, and has nothing to leak beyond a handle that is
-already public. The \texttt{UNIQUE(user\_id, platform)} constraint enforces the one
-sensible cardinality --- at most one handle per platform per account --- at the schema level
-instead of in application code.
+already public.
 
 \begin{figure}[h]
 \centering
@@ -921,9 +913,8 @@ recommendation request the app fetches the user's recent submissions across thei
 platforms, merges them into a single profile (unioning solved sets, combining per-topic
 mastery, taking the max rating), analyses recent-performance trend, and returns ranked
 recommendation cards with platform badges, difficulty, topic tags and a direct link to
-the origin judge. Because the user solves on the native judge and their new submissions
-are picked up on the next refresh, no submission proxying is required --- a deliberately
-simple design that respects each platform's own environment.
+the origin judge. Because the user solves on the native judge and new submissions are picked up on the
+next refresh, no submission proxying is required.
 
 \subsection{Reproducibility and Engineering Practice}
 Every result in this report is regenerable from committed raw data by a fixed sequence of
@@ -989,31 +980,27 @@ read as evidence of weakness across platform vocabularies. \\
 \end{table}
 
 Writing the tests was not merely confirmatory. The skill estimator's convergence test
-initially failed, and the failure was informative: with a \emph{constant} step size the
-estimate does not converge pointwise to the $q$-quantile at all but performs a random
-walk whose stationary \emph{mean} is the quantile. The instantaneous estimate therefore
-carries a noise floor proportional to $\eta$ --- about $0.04$ on the $[0,1]$ difficulty
-scale at the deployed $\eta=0.02$, against $0.007$ at $\eta=0.001$. This does not affect
-the seeded estimates of Section~\ref{sec:results-xplat} (\texttt{seed()} sets the
-empirical quantile exactly), but it does mean the purely online estimate should be read
-as a running average rather than a point value, and it is a property we would not have
-stated without having tried to assert it.
+initially failed, informatively: with a \emph{constant} step size the estimate does not
+converge pointwise to the $q$-quantile but performs a random walk whose stationary
+\emph{mean} is the quantile. The instantaneous estimate therefore carries a noise floor
+proportional to $\eta$ --- about $0.04$ on the $[0,1]$ scale at the deployed $\eta=0.02$,
+against $0.007$ at $\eta=0.001$. The seeded estimates of Section~\ref{sec:results-xplat}
+are unaffected (\texttt{seed()} sets the quantile exactly), but the purely online
+estimate should be read as a running average, not a point value --- a property we would
+not have stated without trying to assert it.
 
 \paragraph{Working habits.} Four practices did the rest.
-\emph{Baselines as assertions.} A \texttt{random} model is carried through every
-experiment specifically as a lower-bound sanity check. Its scores behave exactly as
-theory predicts (\ndcg{}@10 $=0.0012$, and $\approx K/|\mathcal{C}|$ for HitRate@$K$),
-which is a continuous check that the ranking, masking and metric code are not silently
-broken --- if the harness were mis-wired, random would not sit where arithmetic says it
-should. \emph{Leakage checks.} Every model's training solves are masked before ranking,
-and the fold-in experiments use item factors fitted without the probe user's held-out
-items; the $k=0$ degeneracy ($x=0$) was traced analytically to confirm it was the
-method's behaviour and not an indexing error. \emph{Adversarial re-testing of surprises.}
-The two counter-intuitive results were each re-examined before being believed: the
-content model's chance-level performance was diagnosed by building an opposed scorer
-(\texttt{diffmatch}) and confirming it moved the metric five-fold in the predicted
-direction, and the cross-platform transfer failure was re-tested under three independent
-designs before being accepted. \emph{Regenerability as a regression test.} Because the
+\emph{Baselines as assertions.} A \texttt{random} model runs in every experiment as a
+lower-bound check. Its scores sit exactly where theory puts them (\ndcg{}@10 $=0.0012$,
+$\approx K/|\mathcal{C}|$ for HitRate@$K$) --- a continuous signal that ranking, masking
+and metric code are not silently broken. \emph{Leakage checks.} Training solves are
+masked before ranking, and fold-in uses item factors fitted without the probe user's
+held-out items; the $k=0$ degeneracy ($x=0$) was traced analytically to confirm it was
+the method's behaviour, not an indexing error. \emph{Adversarial re-testing of
+surprises.} Both counter-intuitive results were re-examined before being believed: the
+content model's chance-level performance was diagnosed with an opposed scorer
+(\texttt{diffmatch}) that moved the metric five-fold in the predicted direction, and the
+cross-platform transfer failure was re-tested under three independent designs. \emph{Regenerability as a regression test.} Because the
 whole pipeline is deterministic under fixed seeds, re-running it after a change and
 diffing the metric JSON detects unintended effects; the statistics quoted in this report
 are themselves regenerated by \texttt{report\_stats.py} rather than transcribed, which
@@ -1023,12 +1010,11 @@ The suite's limits should be stated plainly. It covers the metric, split, skill 
 normalisation components, and the parsers that turn each platform's payload into the
 unified schema, but not live fetching (which would need recorded API fixtures), the ALS
 wrapper (whose numerical behaviour is the upstream library's) or the web layer (which has
-no endpoint tests). Coverage is therefore deliberately concentrated where a silent failure
-would be both plausible and invisible, rather than uniform; a system intended for
-maintenance by others would need the remaining two-thirds.
+no endpoint tests). Coverage is therefore concentrated where a silent failure would be both plausible and
+invisible, rather than uniform; a system maintained by others would need the rest.
 
 %======================================================================
-\section[The NLP Cross-Platform Auto-Tagger \textnormal{\small(668 words)}]{The NLP Cross-Platform Auto-Tagger}
+\section[The NLP Cross-Platform Auto-Tagger \textnormal{\small(755 words)}]{The NLP Cross-Platform Auto-Tagger}
 \label{sec:tagger}
 %======================================================================
 
@@ -1037,11 +1023,10 @@ AtCoder publishes \emph{no} topic tags. Its problems do carry labels, but they a
 contest-series identifiers (\texttt{abc}, \texttt{arc}) that say when a problem was set,
 not what it is about; measured against the canonical taxonomy, topic coverage on AtCoder
 is exactly $0\%$ of $9{,}095$ problems, against $96.2\%$ on Codeforces and $88.6\%$ on
-LeetCode. Over a third of the unified catalogue ($9{,}204$ problems, $37.8\%$) therefore
-carries no usable topic metadata, and it is not a random third --- it is one entire
-platform. Any topic-based analysis, any topic-gap recommendation, and any attempt to
-compare a user's topic profile across platforms is impossible on that slice unless the
-tags are inferred. We frame this as cross-platform \emph{label} transfer: exploit a
+LeetCode. Over half the unified catalogue ($25{,}342$ problems, $55.2\%$) carries no usable topic
+metadata, and it is not a random half --- it is concentrated in two platforms. Topic-gap
+recommendation and cross-platform topic comparison are impossible on that slice unless
+the tags are inferred. We frame this as cross-platform \emph{label} transfer: exploit a
 richly-labelled platform to annotate an unlabelled one. The task is a close relative of
 Zhao et al.'s~\cite{zhao2018} recovery of topics and difficulty from submission logs,
 but uses the complementary signal --- the problem statement itself.
@@ -1087,22 +1072,19 @@ two\_pointers        & method  & 0.19 & 0.18 & 0.18 \\
 \end{table}
 
 \subsection{Threshold Calibration}
-Predicted tag probabilities are thresholded before display. Sweeping a global threshold
-by $5$-fold CV, $F_1$ peaks at $0.5$ (precision $0.51$, recall $0.54$, $99\%$ of problems
-receiving at least one tag, $2.5$ tags on average). Per-tag thresholds
-(Appendix~\ref{app:hyper}) improve individual tags further. The system displays tags at
-the calibrated threshold and always labels them ``predicted'' versus ``curated'' so the
-provenance is transparent.
+Predicted probabilities are thresholded before display. Sweeping a global threshold by
+$5$-fold CV, $F_1$ peaks at $0.5$ (precision $0.51$, recall $0.54$, $2.5$ tags on
+average); per-tag thresholds (Appendix~\ref{app:hyper}) improve individual tags further.
+Displayed tags are always labelled ``predicted'' or ``curated'', so provenance is
+transparent.
 
 \subsection{The Two-Tier Finding}
-The per-tag results reveal a clean dichotomy that is a genuine contribution in its own
-right. \emph{Content} tags --- \texttt{strings}, \texttt{math}, \texttt{greedy},
-\texttt{game\_theory} --- score highly because they correspond to distinctive vocabulary
-in the statement (``string'', ``prime'', ``game''). \emph{Method} tags ---
-\texttt{dynamic\_programming}, \texttt{binary\_search}, \texttt{two\_pointers} --- score
-poorly because they describe \emph{how} to solve a problem, not \emph{what} it says: a DP
-problem may be dressed as a grid, a sequence or a game, so its text does not reliably
-signal the technique. Text-based tagging is therefore intrinsically limited for
+The per-tag results reveal a clean dichotomy that is a contribution in its own right.
+\emph{Content} tags (\texttt{strings}, \texttt{math}, \texttt{game\_theory}) score highly
+because they correspond to distinctive statement vocabulary. \emph{Method} tags
+(\texttt{dynamic\_programming}, \texttt{binary\_search}) score poorly because they describe
+\emph{how} to solve a problem, not \emph{what} it says: a DP problem may be dressed as a
+grid, a sequence or a game, so its text does not reliably signal the technique. Text-based tagging is therefore intrinsically limited for
 method tags, and a stronger tagger would need structural features (difficulty, solve
 rate, editorial signals), not just text. On the reachable AtCoder problems the tagger
 assigns tags to $775/795$ ($97.5\%$), averaging $1.9$ tags each, with the predicted
@@ -1116,7 +1098,8 @@ AtCoder topic coverage rises only from $0\%$ to $8.5\%$ ($775$ of $9{,}095$ prob
 The bottleneck is therefore \emph{corpus access}, not modelling: a production system
 would use a cached statement corpus (e.g.\ IBM CodeNet) or authenticated, throttled
 access, and the same trained model would then annotate the remaining $8{,}320$ problems
-without any change. A second limitation is intrinsic rather than logistical --- the
+without any change. Section~\ref{sec:tagger-codechef} tests that claim directly on a
+platform that does grant access. A second limitation is intrinsic rather than logistical --- the
 two-tier finding above means that even with full corpus access, method tags would remain
 poorly recovered from text alone. Finally, the tagger is confined to the sixteen most
 frequent tags, below which Codeforces training support becomes too thin to estimate a
@@ -1125,6 +1108,18 @@ hierarchical model that borrows strength from related tags. A knock-on consequen
 the wider project is that AtCoder difficulty, too, is incomplete: only $51.7\%$ of
 AtCoder problems carry a community difficulty estimate, which bounds how much of that
 platform the difficulty-matching scorer can reach.
+
+\subsection{A Second Target Platform}
+\label{sec:tagger-codechef}
+The claim above --- that the ceiling was corpus \emph{access}, not modelling --- needs a
+platform that grants it, and CodeChef serves statements as structured JSON. The same
+trained model, unchanged, was pointed at it. All $5{,}520$ rated problems were retrieved:
+$100\%$ corpus reach against AtCoder's $16\%$. The model tagged $1{,}480$ problems
+CodeChef had left unlabelled, lifting canonical-topic coverage from $3{,}950$ to
+$5{,}430$. The diagnosis holds: given access, the untouched model annotates almost
+everything it sees. Catalogue coverage stays at $25.2\%$ only because one request per
+problem puts the full $21{,}568$ at twelve hours of polite fetching --- a budget, not a
+barrier, and exactly the distinction AtCoder could not settle.
 
 %======================================================================
 \section[Evaluation Methodology \textnormal{\small(1,196 words)}]{Evaluation Methodology}

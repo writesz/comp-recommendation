@@ -76,6 +76,7 @@ def display_recommendations(recs, title="Recommendations"):
         platform_colors = {
             "codeforces": "blue",
             "atcoder": "cyan",
+            "codechef": "magenta",
             "leetcode": "yellow",
         }
         color = platform_colors.get(rec.platform, "white")
