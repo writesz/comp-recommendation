@@ -619,7 +619,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(1,821 words)}]{Implementation}
+\section[Implementation \textnormal{\small(2,894 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -830,6 +830,119 @@ recommendation cards with platform badges, difficulty, topic tags and a direct l
 the origin judge. Because the user solves on the native judge and their new submissions
 are picked up on the next refresh, no submission proxying is required --- a deliberately
 simple design that respects each platform's own environment.
+
+\subsection{Contest History and Difficulty Calibration}
+\label{sec:impl-contests}
+Practice history and contest results are both records of what a user can do, but they
+are not equally trustworthy, and the system treats them differently.
+
+All three platforms expose a rated-contest history, in three incompatible shapes:
+Codeforces through \texttt{user.rating}, AtCoder through
+\texttt{atcoder.jp/users/$\langle$id$\rangle$/history/json} (the community mirror used
+elsewhere in this project has no rating endpoint), and LeetCode through the
+\texttt{userContestRankingHistory} GraphQL field. \texttt{models/contests.py} normalises
+these into a single \texttt{ContestRecord} timeline. Two platform quirks had to be
+handled: LeetCode reports only the rating \emph{after} each round, so deltas are
+reconstructed by walking the timeline in order, and both Codeforces and AtCoder report a
+debut delta measured from a rating of zero, which if summed naively makes ``all-time
+change'' identically equal to the current rating.
+
+The timeline supports two functions. The first is descriptive --- pace against the
+user's own history, plateau detection, volatility, positive-round rate, distance from
+peak and competition cadence --- each gated on having enough history to support the
+claim, so a user with three contests is not told a story the data cannot carry.
+
+The second is a change to how recommendation difficulty is chosen, and it is the more
+consequential. The content scorer originally set a user's level at the $75$th percentile
+of the difficulties they had solved. That statistic is weaker than it looks: it counts
+problems solved with an editorial open, problems upsolved after a round, and whatever
+band the user happens to be grinding, so it tracks \emph{practice habits} rather than
+ability. A contest rating does not. It is an Elo estimate, so by construction a
+competitor rated $R$ has roughly even odds on a problem rated $R$, solved unaided and
+under time pressure --- which is exactly the quantity a difficulty target should
+represent. For a competitor rated $3307$ the two estimates disagree sharply: $0.66$ from
+practice history against $0.94$ from contests.
+
+The calibration is confidence-weighted rather than absolute. Confidence grows with the
+number of rated rounds, decays once the record goes stale, and is discounted for
+LeetCode, whose contest rating is not expressed on a problem-difficulty scale and must
+be mapped by approximation. Whatever confidence is unclaimed falls back to the
+history-derived estimate, so a user with no contest record is scored exactly as before
+and the change degrades gracefully to the previous behaviour. Recent form additionally
+sets the stretch: a user losing rating is aimed close to their current level to
+consolidate rather than pushed further out.
+
+This yields a clean division of labour, and it follows from what each signal can
+support. \emph{Contests decide how hard; solve history decides what topic.} Contests are
+far too sparse to say anything per topic --- a handful of problems per round against a
+taxonomy of $98$ tags --- while practice history covers hundreds of problems per user but
+cannot separate genuine ability from assisted solves.
+
+\subsection{Serving the Models: Fold-In for Unseen Users}
+\label{sec:serving}
+The evaluated models are batch objects: they factorise a fixed matrix and score its
+$2{,}459$ rows in one pass. A deployed recommender must instead score \emph{one arbitrary
+person, inside a request}, and the gap between those two things is not plumbing.
+
+Alternating least squares is \emph{transductive}. The learned artefact is a parameter
+table $X$ with one row per cohort member, not a function from a solve history to a
+latent vector, so a user who registers today has no row and there is nothing to look
+up. This, rather than integration effort, is why the collaborative model could not
+simply be called from the web application.
+
+The resolution is already contained in the training algorithm. ALS alternates two
+closed-form ridge solves, and its \emph{user} step is a function of the item factors and
+a single user's observations. Applying that step to a new user with $Y$ held fixed ---
+\emph{fold-in} --- is therefore not an approximation bolted on afterwards but one
+iteration of the update the model was trained with. For the implicit-feedback objective
+with confidence $c_{ui}=1+\alpha r_{ui}$,
+\begin{equation}
+x_u = \left(Y^{\top}C^{u}Y + \lambda I\right)^{-1} Y^{\top}C^{u}p(u).
+\label{eq:foldin-general}
+\end{equation}
+Evaluated naively this is intractable, since $C^{u}$ is $|I|\times|I|$. But $C^{u}-I$
+vanishes off the user's solved set $S$, as does $p(u)$, so with
+$Y^{\top}C^{u}Y = Y^{\top}Y + \alpha Y_S^{\top}Y_S$ it collapses to
+\begin{equation}
+x_u = \left(Y^{\top}Y + \alpha\,Y_S^{\top}Y_S + \lambda I\right)^{-1}(1+\alpha)\!\!
+      \sum_{i \in S}\! y_i .
+\label{eq:foldin}
+\end{equation}
+$Y^{\top}Y$ is shared by every user and precomputed once, leaving $|S|f^2$ to accumulate
+and a single $f \times f$ solve. At $f=64$ this measures $0.28$\,ms, or $0.63$\,ms
+including scoring all $10{,}239$ items --- immaterial against the network latency of
+re-fetching a user's history.
+
+\paragraph{Does fold-in cost accuracy?} The question deserves an experiment rather than
+an assurance, because a served user is in a genuinely different position from a trained
+one: they contributed nothing to the latent space they are being scored in. We therefore
+ran two tests (\texttt{scripts/validate\_foldin.py}). The first is a sanity check ---
+discard a cohort user's learned row and recover it by folding their own training history
+back in --- and it retains $99.67\%$ of their \ndcg{}@10, confirming the implementation
+but not the deployment. The second withholds $400$ users from training \emph{entirely},
+fits the item factors on the remaining $2{,}059$, and folds the strangers in. They score
+\ndcg{}@10 $=0.1035$, against $0.1025$ for the same users under a model that did train on
+them (paired Wilcoxon $p=0.93$, median difference zero): statistically indistinguishable.
+The interpretation is that a single user among two thousand barely perturbs the item
+factors, so $Y$ is already a stable basis into which newcomers can be projected. Serving
+strangers is, on this dataset, free.
+
+\paragraph{What the served model does, and does not, decide.} Following
+Section~\ref{sec:hybridrefuted}, the application does not blend proportionally to
+density. Collaborative filtering supplies the affinity term wherever it has signal, and
+the topic-gap term is used only where it has none --- a threshold of one matched solve,
+following the cold-start curve on which \ndcg{}@10 rises from $0.001$ at $k=0$ to $0.135$
+at $k=1$. Both paths feed the same weighted sum, so the covered and uncovered halves of
+the catalogue remain comparable. Difficulty is deliberately \emph{not} delegated to CF,
+which has no notion of whether a problem is appropriately hard; it remains governed by
+the contest calibration of Section~\ref{sec:impl-contests}.
+
+Two coverage limits follow from the cohort's construction and are surfaced in the
+interface rather than hidden. CF can speak for $10{,}239$ of the $24{,}335$ catalogued
+problems; the remainder are ranked by content alone. And because the cohort was sampled
+from Codeforces submissions, no LeetCode problem appears in the matrix at all, so
+LeetCode recommendations are content-based by construction --- a structural consequence
+of the sampling frame, not a defect of the model.
 
 \subsection{Reproducibility and Engineering Practice}
 Every result in this report is regenerable from committed raw data by a fixed sequence of
@@ -1153,7 +1266,7 @@ on CF) for a zero-CF-history user; and the skill experiments of
 Section~\ref{sec:results-xplat}.
 
 %======================================================================
-\section[Results \textnormal{\small(885 words)}]{Results}
+\section[Results \textnormal{\small(1,185 words)}]{Results}
 \label{sec:results}
 %======================================================================
 This section is written as an inquiry: each subsection poses a hypothesis, tests it, and
@@ -1209,14 +1322,66 @@ below CF because hundreds of problems fit any difficulty/topic band and predicti
 stable across cut-off $K$.
 
 \subsection{A hypothesis refuted: the hybrid does not win}
+\label{sec:hybridrefuted}
 We expected a hybrid to be the strongest model. It is not: \texttt{hybrid}
 ($0.081$) and \texttt{hybrid\_pop} ($0.090$) both fall \emph{below} pure CF ($0.096$),
-significantly so. The explanation is structural: the $k$-core-filtered matrix contains no
-genuinely cold users (every user has $\geq5$ solves), so CF already has sufficient signal
-for everyone in it, and blending in a weaker ingredient only dilutes it. This is the
-first point at which the data redirected the project: if the hybrid's value is to appear
-anywhere, it must be at true cold start --- which this test set does not contain, and which
-we therefore simulate next.
+significantly so.
+
+An aggregate number cannot say \emph{why}, and it hides the question that matters for
+deployment. The blend weight $\alpha(u)=n(u)/(n(u)+k_0)$ is a per-user quantity, so the
+hybrid is a different model for every user: it is designed to protect those with little
+history, and should therefore win \emph{somewhere} even if it loses on average. Table~
+\ref{tab:hybridbuckets} runs the paired comparison inside history-size buckets to find
+out where.
+
+\begin{table}[h]
+\centering
+\caption{Paired CF vs.\ hybrid by training-history size. The blend is at its worst
+exactly where it was designed to help. \ndcg{}@10 is \emph{not} comparable across rows
+(IDCG@10 saturates above ten held-out items); only the within-bucket paired comparison,
+over identical users, is meaningful.}
+\label{tab:hybridbuckets}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+history & $n$ & $\alpha$ & cf & hybrid & cf$-$hyb & $p$ \\
+\midrule
+$<10$     & 240 & 0.39 & \textbf{0.2483} & 0.1221 & $+0.1262$ & $1.7\times10^{-9}$ \\
+10--25    & 366 & 0.63 & \textbf{0.1869} & 0.1654 & $+0.0215$ & $3.5\times10^{-4}$ \\
+25--50    & 328 & 0.78 & 0.1252 & 0.1240 & $+0.0012$ & $0.61$ \\
+50--100   & 379 & 0.88 & 0.0822 & 0.0855 & $-0.0033$ & $0.08$ \\
+100--250  & 511 & 0.94 & 0.0451 & 0.0464 & $-0.0012$ & $0.02$ \\
+250--500  & 354 & 0.97 & 0.0267 & 0.0268 & $-0.0002$ & $0.38$ \\
+$\geq500$ & 281 & 0.99 & 0.0107 & 0.0106 & $+0.0001$ & $0.59$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result inverts the design intuition. The hybrid never wins at any history size, and
+its deficit is \emph{largest} for the sparsest users --- for those with fewer than ten
+training solves it roughly halves \ndcg{}@10 and beats CF for only $5.8\%$ of them. The
+mechanism is visible in the $\alpha$ column. A sparse user receives a small $\alpha$,
+which by construction hands most of the weight to the cold ingredient; but that
+ingredient is the content scorer, which performs at chance on this task
+($0.0012$, Table~\ref{tab:overall}). The cold-start path therefore dilutes a working
+signal with noise \emph{in inverse proportion to how much history the user has}. At the
+other extreme $\alpha \to 1$ and the two models converge, as the formula requires.
+
+This is a sharper and less comfortable finding than ``CF already has enough signal''. The
+hybrid's premise is that content is a safe fallback when collaborative evidence is thin.
+On this task it is not a safe fallback, because it is not informative at all; and the
+architecture spends the most weight on it precisely when the user can least afford it.
+Note that \texttt{hybrid\_pop}, whose cold ingredient is popularity rather than content,
+loses far less in the sparsest bucket ($0.1946$ vs.\ $0.1221$) --- consistent with
+popularity being a weak but genuine signal ($0.0374$) where content is none.
+
+The consequence for the deployed system is a design change rather than a tuning change,
+and Section~\ref{sec:serving} adopts it: fall back to content only when collaborative
+filtering is \emph{silent}, rather than blending in proportion to density. This preserves
+the cold-start protection that motivated the hybrid without paying for it whenever CF has
+something to say. The remaining question --- whether the hybrid earns its place at
+\emph{true} cold start, which this $k$-core-filtered test set cannot contain because every
+user has $\geq5$ solves --- is what the simulation in the next section addresses.
 
 \begin{figure}[h]
 \centering
