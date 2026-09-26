@@ -45,6 +45,42 @@ rubric p. 6). Template bands: `cprs/REQUIREMENTS.md` §C, verbatim from
 | Is the final product of high quality? | 7 |
 | Is the implementation that is described technically challenging? | 3 |
 
+## Required report structure and word limits
+
+The report must be **six chapters**, each with a strict cap:
+
+| # | Chapter | Max words | What it must contain |
+|---|---|---:|---|
+| 1 | Introduction | 1,000 | concept, motivation, **and the project template by number** (Template 1.1) |
+| 2 | Literature review | 2,500 | revised from the draft, incorporating feedback received since |
+| 3 | Design | 2,000 | revised from the draft, incorporating feedback and any design changes |
+| 4 | Implementation | 2,500 | major algorithms/techniques, the most important parts of the code, and **a visual representation of results** (screenshots or graphs) — in the style of the topic 6 peer review, greatly expanded |
+| 5 | Evaluation | 2,500 | the evaluation carried out and its results, **justification of the approach** to obtaining and analysing them, and a critique of the project as a whole: successes, failures, limitations, possible extensions |
+| 6 | Conclusion | 1,000 | summary, and optionally broader themes or further work |
+
+**Total: 10,500 words, strict.** The per-chapter caps are also strict. They deliberately
+sum to 11,500 so writing can be spread to suit the project — but the 10,500 total binds
+regardless, so roughly 1,000 words of headroom must be given up somewhere.
+**Submissions over the limit are penalised.**
+
+### How the current `final_report.tex` maps onto those six
+
+The source has more top-level `\section`s than the brief has chapters, so they must be
+folded before submission and counted per chapter, not per section:
+
+| Chapter | Current sections |
+|---|---|
+| Introduction | Introduction |
+| Literature review | Literature Review |
+| Design | Requirements and Design |
+| Implementation | Implementation **+ The NLP Cross-Platform Auto-Tagger** |
+| Evaluation | Evaluation Methodology + Results + Discussion |
+| Conclusion | Conclusion and Future Work (+ Professional, Legal and Ethical) |
+
+Check every chapter against its cap with `scripts/update_word_counts.py`, summing the
+grouped sections — a per-section count that looks fine can still breach a chapter cap
+once its siblings are added in.
+
 ## The code rubric
 
 **There is no separate rubric for the code.** Code is marked through report criteria
