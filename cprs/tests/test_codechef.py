@@ -25,10 +25,19 @@ from models.unified_schema import (
 # --- difficulty normalisation ----------------------------------------------
 
 def test_normalize_cc_difficulty_maps_into_unit_range():
-    assert normalize_cc_difficulty(300) == 0.0
-    assert normalize_cc_difficulty(5000) == 1.0
-    mid = normalize_cc_difficulty(2650)
+    """Bounds are [200, 4000], set empirically from the observed catalogue."""
+    assert normalize_cc_difficulty(200) == 0.0
+    assert normalize_cc_difficulty(4000) == 1.0
+    mid = normalize_cc_difficulty(2100)          # midpoint of the range
     assert 0.49 < mid < 0.51
+
+
+def test_normalize_cc_difficulty_spans_the_observed_catalogue():
+    """The real catalogue runs 19-4076; both ends must land in range."""
+    assert normalize_cc_difficulty(19) == 0.0
+    assert normalize_cc_difficulty(4076) == 1.0
+    median = normalize_cc_difficulty(2071)       # catalogue median
+    assert 0.45 < median < 0.55
 
 
 def test_normalize_cc_difficulty_accepts_strings():
@@ -149,6 +158,53 @@ def test_solved_problem_codes_dedupes_and_needs_acceptance():
 
 def test_parser_tolerates_empty_content():
     assert CC._parse_submission_rows("") == []
+
+
+# --- statement extraction ---------------------------------------------------
+
+def test_extract_statement_prefers_the_structured_component():
+    detail = {
+        "problemComponents": {"statement": "<p>Chef has <b>N</b> cakes.</p>"},
+        "body": "<p>should not be used</p>",
+    }
+    assert CC.extract_statement(detail) == "Chef has N cakes."
+
+
+def test_extract_statement_falls_back_to_body():
+    assert CC.extract_statement({"body": "<p>fallback text</p>"}) == "fallback text"
+
+
+def test_extract_statement_is_empty_when_there_is_nothing():
+    assert CC.extract_statement({}) == ""
+    assert CC.extract_statement({"problemComponents": {}, "body": ""}) == ""
+
+
+def test_extract_statement_drops_inline_maths():
+    detail = {"body": "<p>Given $N \\leq 10^5$ find the answer.</p>"}
+    out = CC.extract_statement(detail)
+    assert "10^5" not in out
+    assert out.startswith("Given") and out.endswith("find the answer.")
+
+
+def test_strip_markup_survives_malformed_attributes():
+    """
+    Regression: author-written statements can carry attributes that make lxml
+    raise from inside BeautifulSoup rather than recover, which aborted a
+    multi-hour harvest partway through. Extraction must degrade, not raise.
+    """
+    nasty = '<p xmlns:broken="x" {notanattr}=1>hello <b>world</b></p>'
+    assert CC._strip_markup(nasty) == "hello world"
+
+
+def test_strip_markup_last_resort_is_a_regex_strip(monkeypatch):
+    """With every parser failing, text still comes back rather than an exception."""
+    import fetchers.codechef as mod
+
+    def explode(*a, **k):
+        raise RuntimeError("parser unavailable")
+
+    monkeypatch.setattr(mod, "BeautifulSoup", explode)
+    assert mod._strip_markup("<p>plain <i>text</i></p>").split() == ["plain", "text"]
 
 
 # --- contest history --------------------------------------------------------

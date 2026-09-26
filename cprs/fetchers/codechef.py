@@ -139,6 +139,26 @@ def fetch_problem_detail(code: str, delay: float = REQUEST_DELAY) -> dict:
     return _get(f"api/contests/PRACTICE/problems/{code}", delay=delay)
 
 
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_markup(raw: str) -> str:
+    """
+    HTML to plain text, tolerant of the markup CodeChef actually serves.
+
+    Problem statements are author-written and some contain malformed
+    attributes that make lxml raise from inside BeautifulSoup rather than
+    recover. Since a single bad statement must not abort a multi-hour harvest,
+    each parser is tried in turn and a regex strip is the last resort.
+    """
+    for parser in ("lxml", "html.parser"):
+        try:
+            return BeautifulSoup(raw, parser).get_text(separator=" ", strip=True)
+        except Exception:
+            continue
+    return _TAG_RE.sub(" ", raw)
+
+
 def extract_statement(detail: dict) -> str:
     """
     Pull clean statement text out of a problem-detail payload.
@@ -151,7 +171,7 @@ def extract_statement(detail: dict) -> str:
     raw = components.get("statement") or detail.get("body") or ""
     if not raw:
         return ""
-    text = BeautifulSoup(raw, "lxml").get_text(separator=" ", strip=True)
+    text = _strip_markup(raw)
     text = re.sub(r"\$+[^$]*\$+", " ", text)  # drop inline maths
     return re.sub(r"\s+", " ", text).strip()
 

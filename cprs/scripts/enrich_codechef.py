@@ -113,17 +113,20 @@ def main(limit, rated_only: bool, delay: float) -> None:
             code = p["code"]
             try:
                 detail = codechef.fetch_problem_detail(code, delay=delay)
+                computed = detail.get("computed_tags") or []
+                user = detail.get("user_tags") or []
+                statement = codechef.extract_statement(detail)
             except RateLimited:
                 logger.error(f"rate limited on {code}; stopping so the run stays resumable")
                 break
             except Exception as e:
-                # A missing or moved problem should not abort a multi-hour pass.
+                # Neither a missing problem nor an unparseable statement should
+                # abort a multi-hour pass. The code is recorded as attempted so
+                # a resumed run does not retry it forever.
+                logger.warning(f"{code}: {type(e).__name__}: {str(e)[:120]}")
                 ev.write(json.dumps({"code": code, "error": str(e)[:200]}) + "\n")
+                ev.flush()
                 continue
-
-            computed = detail.get("computed_tags") or []
-            user = detail.get("user_tags") or []
-            statement = codechef.extract_statement(detail)
 
             ev.write(json.dumps({
                 "code": code,
