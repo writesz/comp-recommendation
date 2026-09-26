@@ -13,6 +13,7 @@ Figures:
   5 xplat_skill_scatter   CF-skill vs AtCoder-skill (unified difficulty, r=0.77)
   6 coldstart_skill_mae   cold-start CF-skill estimation error by predictor
   7 online_convergence    live skill-estimate error vs #solves seen
+  8 difficulty_by_platform catalogue difficulty per platform on the unified scale
 
 Usage:
     python -m scripts.make_figures
@@ -163,10 +164,66 @@ def fig_online_convergence():
     fig.tight_layout(); fig.savefig(FIG_DIR / "online_convergence.png"); plt.close(fig)
 
 
+def fig_difficulty_by_platform():
+    """
+    Catalogue difficulty distribution per platform on the unified scale.
+
+    This is the figure behind the normalisation claim in the design chapter: if
+    the four platform-specific mappings did not produce a comparable scale, the
+    distributions would sit in disjoint bands and a cross-platform difficulty
+    match would be meaningless. Small multiples rather than four overlaid
+    series, because the panels are the comparison — identity comes from the
+    panel label and position, so colour carries no information and one hue is
+    used throughout.
+    """
+    import pandas as pd
+
+    csv = DATA_DIR / "cprs_unified_tagged.csv"
+    if not csv.exists():
+        return
+    df = pd.read_csv(csv, usecols=["platform", "difficulty_normalized"])
+
+    order = ["codeforces", "atcoder", "codechef", "leetcode"]
+    labels = {"codeforces": "Codeforces", "atcoder": "AtCoder",
+              "codechef": "CodeChef", "leetcode": "LeetCode"}
+    present = [p for p in order if (df["platform"] == p).any()]
+
+    fig, axes = plt.subplots(len(present), 1, figsize=(6.4, 1.35 * len(present)),
+                             sharex=True)
+    axes = np.atleast_1d(axes)
+    bins = np.linspace(0, 1, 41)
+
+    for ax, plat in zip(axes, present):
+        d = df.loc[df["platform"] == plat, "difficulty_normalized"].dropna()
+        ax.hist(d, bins=bins, color=BLUE, edgecolor="white", linewidth=0.4)
+        med = float(d.median())
+        ax.axvline(med, color="#333333", ls="--", lw=1.2)
+        # LeetCode has three ordinal levels, so its "distribution" is 3 spikes;
+        # saying so on the panel stops it reading as a failure of the mapping.
+        note = " (3 ordinal levels)" if plat == "leetcode" else ""
+        ax.text(0.015, 0.82, f"{labels[plat]}{note}", transform=ax.transAxes,
+                fontsize=10, fontweight="bold", va="top")
+        ax.text(0.985, 0.82, f"n={len(d):,}  median {med:.2f}",
+                transform=ax.transAxes, fontsize=9, color="#666666",
+                ha="right", va="top")
+        ax.set_yticks([])
+        ax.spines[["left", "right", "top"]].set_visible(False)
+
+    axes[-1].set_xlabel("normalised difficulty  [0, 1]")
+    # Deliberately descriptive, not a claim of alignment: the medians differ by
+    # up to 0.12 and the reader should see that rather than be told otherwise.
+    axes[0].set_title("Four incompatible difficulty scales, mapped onto one range",
+                      fontsize=11, pad=8)
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "difficulty_by_platform.png")
+    plt.close(fig)
+
+
 def main() -> None:
     FIG_DIR.mkdir(exist_ok=True)
     for fn in (fig_model_comparison, fig_metric_vs_k, fig_activity_buckets, fig_coldstart_curve,
-               fig_xplat_skill_scatter, fig_coldstart_skill_mae, fig_online_convergence):
+               fig_xplat_skill_scatter, fig_coldstart_skill_mae, fig_online_convergence,
+               fig_difficulty_by_platform):
         try:
             fn()
             logger.info(f"✓ {fn.__name__}")

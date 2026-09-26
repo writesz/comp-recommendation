@@ -523,13 +523,27 @@ The four platforms express difficulty incompatibly: Codeforces uses an integer r
 (roughly 800--3500); AtCoder uses a community model-estimated real value that can be
 negative~\cite{kenkoooo2024}; CodeChef publishes an Elo-like problem rating for only a
 quarter of its catalogue; LeetCode uses three ordinal levels. We map all four onto a
-common $[0,1]$ scale by min--max normalisation with platform-specific bounds:
+common $[0,1]$ scale by min--max normalisation with platform-specific bounds
+(Figure~\ref{fig:difficulty}):
 \begin{align}
 d_{\text{CF}}   &= \operatorname{clip}\!\Big(\tfrac{r-800}{3500-800},\,0,\,1\Big), &
 d_{\text{AC}}   &= \operatorname{clip}\!\Big(\tfrac{b+500}{4000+500},\,0,\,1\Big), \\
 d_{\text{CC}}   &= \operatorname{clip}\!\Big(\tfrac{r-200}{4000-200},\,0,\,1\Big), &
 d_{\text{LC}}   &\in \{0.2,\,0.5,\,0.85\}.
 \end{align}
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.82\textwidth]{figures/difficulty_by_platform.png}
+\caption{Catalogue difficulty per platform on the unified scale. The mapping brings four
+incompatible scales into one range but does not make them identical: medians run from
+$0.37$ (Codeforces) to $0.50$ (LeetCode), so a cross-platform match is approximate rather
+than exact. The spike at $0$ for Codeforces and AtCoder is the lower clip, and LeetCode
+resolves to three spikes because it publishes only three ordinal levels. It is this
+scale, not the distributions' shape, that the $r=0.77$ skill correlation of
+Section~\ref{sec:results-xplat} validates.}
+\label{fig:difficulty}
+\end{figure}
+
 Unlike the other three, CodeChef publishes no documented rating range, so its bounds are
 set empirically from the catalogue: over the $5{,}520$ rated problems of $21{,}568$,
 ratings span $19$--$4076$ with 1st and 99th percentiles at $193$ and $3660$, so
