@@ -89,45 +89,41 @@ benefit.
 \pagenumbering{arabic}
 
 %======================================================================
-\section[Introduction \textnormal{\small(1,000 words)}]{Introduction}
+\section[Introduction \textnormal{\small(985 words)}]{Introduction}
 \label{sec:intro}
 %======================================================================
 
 \subsection{Motivation and Context}
 Competitive programming has grown into a global educational practice. Platforms such
 as Codeforces, AtCoder, CodeChef and LeetCode collectively host millions of algorithmic
-problems
-and serve tens of millions of users~\cite{wasik2018}, functioning both as training
+problems and serve tens of millions of users~\cite{wasik2018}, functioning both as training
 grounds for algorithmic reasoning and as \emph{de-facto} assessment instruments in
 technical hiring, where developers report that preparation centres on exactly this kind
-of timed algorithmic problem~\cite{behroozi2019}. Their very scale, however, creates a discovery
-problem: a learner must repeatedly decide \emph{which problem to attempt next} from a
-space of thousands, usually by trial and error or informal peer advice rather than
-systematic, personalised guidance. Because timely, well-targeted feedback is central
+of timed algorithmic problem~\cite{behroozi2019}. Their scale, however, creates a discovery problem: a learner must repeatedly decide
+\emph{which problem to attempt next} from a space of thousands, usually by trial and
+error or peer advice rather than systematic, personalised guidance. Because timely, well-targeted feedback is central
 to skill acquisition~\cite{boud2013}, this is a genuine educational deficiency, not a
 mere convenience gap; yet platforms surface only coarse aggregate statistics (a rating,
 a solve count) and no actionable problem-level direction.
 
-The scale of that decision is worth making concrete, because it is easy to underestimate.
-In the unified catalogue assembled for this project (Section~\ref{sec:design-data}),
-$1{,}685$ problems sit within $\pm0.05$ of the median learner's skill on the normalised
-difficulty scale --- that is, roughly seventeen hundred problems are all plausibly
-``the right level'' at any given moment, before topic, style or novelty are considered at
-all. A learner cannot inspect that set, so in practice they sample from a small, biased
-corner of it: in our interaction data the most-solved tenth of problems absorbs
-$51\%$ of all solve events, while the median problem is solved by just $23$ of $2{,}459$
-users. The consequence is not merely inefficiency but systematic distortion --- practice
-concentrates on whatever is visible rather than on whatever would most improve the
-learner. This is the discovery problem the project sets out to address, and it is
+The scale of that decision is worth making concrete. In the unified catalogue assembled
+here (Section~\ref{sec:design-data}), $1{,}966$ problems sit within $\pm0.05$ of the
+median learner's skill on the normalised difficulty scale --- close to two thousand
+problems all plausibly ``the right level'' at any moment, before topic, style or novelty
+are considered. A learner cannot inspect that set, so in practice they sample a small,
+biased corner of it: the most-solved tenth of problems absorbs $51\%$ of all solve
+events, while the median problem is solved by just $23$ of $2{,}459$ users. The
+consequence is not inefficiency but systematic distortion --- practice concentrates on
+whatever is visible rather than on whatever would most improve the learner. This is
 precisely the shape of problem that personalised ranking exists to solve.
 
-The difficulty is compounded by \emph{fragmentation}. Each platform operates as an
-island with its own difficulty scale, tag taxonomy and user base. A learner practising
-on Codeforces receives no guidance about complementary AtCoder or LeetCode problems
-that would target the same weakness, and the rich behavioural trace a user generates on
-one platform is invisible to the others. Existing aids --- platform-curated lists,
-community ``ladders'', forum advice --- are neither personalised nor cross-platform.
-Bridging these islands is the specific opportunity CPRS pursues.
+The difficulty is compounded by \emph{fragmentation}. Each platform is an island with its
+own difficulty scale, tag taxonomy and user base. A learner practising on Codeforces
+receives no guidance about complementary AtCoder, CodeChef or LeetCode problems targeting
+the same weakness, and the behavioural trace they generate on one platform is invisible
+to the others. Existing aids --- curated lists, community ``ladders'', forum advice ---
+are neither personalised nor cross-platform. Bridging these islands is the opportunity
+CPRS pursues.
 
 \subsection{Problem Statement}
 This project addresses the question: \emph{can data-science techniques build a
@@ -140,14 +136,16 @@ premise.
 
 \subsection{Aims and Objectives}
 \label{sec:objectives}
-The overall aim is a working, evaluated cross-platform recommender that is both a
-useful tool and a vehicle for answering the research questions below. Concretely, the
-measurable objectives are:
+The project is submitted under \textbf{Template 1.1}, \emph{Data-Driven Personalised
+Educational Content Recommendation}, whose brief calls for a data-driven recommendation
+engine with a documented data-science pipeline and a quantitative evaluation. The overall
+aim is a working, evaluated cross-platform recommender that is both a useful tool and a
+vehicle for the research questions below. The measurable objectives are:
 \begin{enumerate}
     \item[\textbf{O1}] Curate a unified, normalised cross-platform problem dataset
     (comparable difficulty, shared tag taxonomy, stable identifiers).
-    \item[\textbf{O2}] Recover AtCoder's missing topic tags with an NLP method,
-    evaluated by cross-validation.
+    \item[\textbf{O2}] Recover missing topic tags on the platforms that lack them with an
+    NLP method, evaluated by cross-validation.
     \item[\textbf{O3}] Assemble a real user$\times$problem interaction dataset and a
     principled (temporal) train/test protocol.
     \item[\textbf{O4}] Implement and compare content-based, collaborative and hybrid
@@ -199,16 +197,15 @@ questions:
 \subsection{An Evidence-Driven Journey}
 \label{sec:journey}
 This project did not unfold as planned, and the divergence is the source of its best
-findings. We set out expecting a
-\emph{hybrid} recommender to be the centrepiece and cross-platform aggregation to be an
-obvious win. The data refused both expectations. The hybrid did not beat collaborative
-filtering; cross-platform \emph{collaborative} transfer actively hurt; and the
-population that cross-platform cold-start was meant to rescue turned out to barely
-exist. Rather than discard the premise, we followed the evidence to a sharper question
---- is \emph{skill}, as opposed to co-occurrence, transferable? --- and found that it
-is, strongly. The report is written to make this reasoning visible: each major result
-is presented as a hypothesis tested, sometimes refuted, and refined --- more honest, and
-more instructive, than a tidy narrative in which everything worked.
+findings. We set out expecting a \emph{hybrid} recommender to be the centrepiece and
+cross-platform aggregation to be an obvious win. The data refused both. The hybrid did
+not beat collaborative filtering; cross-platform \emph{collaborative} transfer actively
+hurt; and the population that cross-platform cold-start was meant to rescue barely
+exists. Rather than discard the premise, we followed the evidence to a sharper question
+--- is \emph{skill}, rather than co-occurrence, transferable? --- and found that it is,
+strongly. The report makes this reasoning visible: each major result is presented as a
+hypothesis tested, sometimes refuted, and refined --- more honest, and more instructive,
+than a tidy narrative in which everything worked.
 
 \subsection{Report Structure}
 Section~\ref{sec:lit} reviews the literature and states the gap. Section~\ref{sec:design}
