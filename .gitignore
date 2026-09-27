@@ -34,3 +34,13 @@ cprs/data/report_stats.json
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+
+# Report sources and project paperwork — submitted through the report
+# hand-in, not through the code repository.
+CLAUDE.md
+REQUIREMENTS.md
+preliminary_report_feedback.md
+cprs/final_report.tex
+cprs/preliminary_report.md
+cprs/preliminary_report.tex
+cprs/requirements.txt
