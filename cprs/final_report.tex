@@ -60,7 +60,7 @@ users little personalised guidance on what to solve next, and each platform is a
 isolated silo with its own difficulty scale and tag taxonomy. This project builds
 CPRS, a cross-platform recommender spanning Codeforces, AtCoder, CodeChef and
 LeetCode. We curate a unified dataset of 45{,}903 problems with normalised difficulty
-and a shared taxonomy of 43 canonical topics, recover AtCoder's missing topic tags
+and a shared taxonomy of 44 canonical topics, recover AtCoder's missing topic tags
 with an NLP transfer tagger, and assemble a real user$\times$problem interaction dataset
 (2{,}459 users, 532{,}059 solves) by sampling the Codeforces API. On a held-out
 temporal split we compare six recommenders under five ranking metrics with paired
@@ -176,7 +176,7 @@ questions:
 \label{sec:contributions}
 \begin{enumerate}
     \item \textbf{A curated cross-platform dataset} of 45{,}903 problems over four
-    judges with min--max-normalised difficulty and a 43-topic unified taxonomy, plus an
+    judges with min--max-normalised difficulty and a 44-topic unified taxonomy, plus an
     interaction dataset of 2{,}459 users and 532{,}059 solves, time-split for offline
     evaluation (Sections~\ref{sec:design-data}, \ref{sec:impl-data}).
     \item \textbf{An NLP cross-platform transfer tagger} recovering absent topic tags on
@@ -388,7 +388,7 @@ cross-platform skill estimator (\S\ref{sec:design-skill}) \\
 \end{table}
 
 %======================================================================
-\section[Requirements and Design \textnormal{\small(1,522 words)}]{Requirements and Design}
+\section[Requirements and Design \textnormal{\small(1,614 words)}]{Requirements and Design}
 \label{sec:design}
 %======================================================================
 
@@ -430,19 +430,20 @@ the same handle --- the mechanism by which a second platform is bridged to the f
 
 \begin{table}[h]
 \centering
-\caption{Platform survey. \emph{History} is public per-user solve data; \emph{overlap} is
-the share of sampled Codeforces handles with an account of the same name. Adopted
-platforms in bold.}
+\caption{Platform survey. \emph{Overlap} is the share of sampled Codeforces handles
+holding an account of the same name, measured by probing. Adopted platforms in bold; the
+final column states what each is actually used for, since adoption into the catalogue and
+adoption into the interaction matrix are different commitments.}
 \label{tab:platforms}
 \small
 \begin{tabular}{llccccl}
 \toprule
 Platform & Access & Catalogue & Difficulty & Tags & Overlap & Outcome \\
 \midrule
-\textbf{Codeforces} & REST API  & 11{,}263 & rating   & yes  & ---   & adopted (anchor) \\
-\textbf{AtCoder}    & community & 9{,}095  & modelled & no   & 15.5\% & adopted \\
-\textbf{CodeChef}   & site JSON & 21{,}568 & partial  & weak & 20\%  & adopted \\
-\textbf{LeetCode}   & GraphQL   & 3{,}977  & ordinal  & yes  & ---   & adopted (catalogue) \\
+\textbf{Codeforces} & REST API  & 11{,}263 & rating   & yes  & ---   & anchor: matrix + catalogue \\
+\textbf{AtCoder}    & community & 9{,}095  & modelled & no   & 15.5\% & bridged into the matrix \\
+\textbf{CodeChef}   & site JSON & 21{,}568 & partial  & weak & 20\%  & catalogue + profile \\
+\textbf{LeetCode}   & GraphQL   & 3{,}977  & ordinal  & yes  & ---   & catalogue + profile \\
 \midrule
 DMOJ        & REST API    & 5{,}269 & points & yes & 2\% & rejected: no bridge \\
 HackerRank  & internal    & tracks  & none   & yes & --- & rejected: no difficulty \\
@@ -463,8 +464,16 @@ $2\%$ of our cohort holds an account, leaving too thin a bridge to learn anythin
 across. CodeChef inverts every one of those properties: its official API has been
 withdrawn, its histories must be walked a dozen rows of HTML at a time, and it throttles
 aggressively enough to force exponential backoff --- yet it matches $20\%$ of the cohort,
-a denser bridge than AtCoder's, and so earns its place. API quality is a cost; overlap is
-the value, and the two are uncorrelated.
+a denser potential bridge than AtCoder's $15.5\%$. API quality is a cost; overlap is the
+value, and the two are uncorrelated.
+
+That $20\%$ is measured but, in this build, not yet spent. CodeChef enters the catalogue,
+the tagger and the live application, while the interaction matrix and every result in
+Sections~\ref{sec:eval}--\ref{sec:results} remain Codeforces-side against the frozen
+snapshot they were computed on. Harvesting the cohort's CodeChef histories is bounded
+work --- the median matched user has $4.5$ pages of submissions and the mean $11.4$,
+putting a $\sim$$490$-user harvest at about five hours --- so the denser bridge is a
+costed next step (Section~\ref{sec:conclusion}), not a claim of this report.
 
 Three further asymmetries shaped what each adopted platform is used \emph{for}, rather
 than whether to adopt it. Codeforces is the anchor because it alone couples a large
@@ -480,8 +489,8 @@ CPRS is organised as a data pipeline feeding a set of recommendation models, exp
 through a web application (Figure~\ref{fig:arch}). Fetchers for the four platforms of
 Section~\ref{sec:design-platforms} collect raw problem
 catalogues and user submissions; an ETL stage normalises them into a unified schema; the
-NLP tagger enriches AtCoder problems; and the recommendation models are evaluated
-offline and served live.
+NLP tagger enriches the two platforms whose catalogues arrive untagged; and the
+recommendation models are evaluated offline and served live.
 
 \begin{figure}[h]
 \centering
@@ -546,7 +555,7 @@ ratings span $19$--$4076$ with 1st and 99th percentiles at $193$ and $3660$, so
 $[200, 4000]$ covers the mass while clipping a thin tail at each end. Unrated problems
 are flagged by sentinel values rather than omitted, and are rejected rather than
 silently normalised to zero.
-Tags from all platforms are folded into a shared taxonomy of 43 canonical topics
+Tags from all platforms are folded into a shared taxonomy of 44 canonical topics
 (Appendix~\ref{app:taxonomy}), and every problem receives a stable identifier
 (\texttt{cf:1234A}, \texttt{ac:abc123\_a}, \texttt{lc:42}). Two assumptions are explicit:
 that difficulty distributions are roughly comparable across platforms after
@@ -704,7 +713,7 @@ resulting scale. For cross-platform value we \emph{began} with joint matrix fact
 --- a decision the evaluation forced rather than anticipated.
 
 %======================================================================
-\section[Implementation \textnormal{\small(2,818 words)}]{Implementation}
+\section[Implementation \textnormal{\small(2,873 words)}]{Implementation}
 \label{sec:impl}
 %======================================================================
 
@@ -918,16 +927,18 @@ next refresh, no submission proxying is required.
 Practice history and contest results are both records of what a user can do, but they
 are not equally trustworthy, and the system treats them differently.
 
-All three platforms expose a rated-contest history, in three incompatible shapes:
+All four platforms expose a rated-contest history, in four incompatible shapes:
 Codeforces through \texttt{user.rating}, AtCoder through
 \texttt{atcoder.jp/users/$\langle$id$\rangle$/history/json} (the community mirror used
-elsewhere in this project has no rating endpoint), and LeetCode through the
-\texttt{userContestRankingHistory} GraphQL field. \texttt{models/contests.py} normalises
-these into a single \texttt{ContestRecord} timeline. Two platform quirks had to be
-handled: LeetCode reports only the rating \emph{after} each round, so deltas are
-reconstructed by walking the timeline in order, and both Codeforces and AtCoder report a
-debut delta measured from a rating of zero, which if summed naively makes ``all-time
-change'' identically equal to the current rating.
+elsewhere in this project has no rating endpoint), LeetCode through the
+\texttt{userContestRankingHistory} GraphQL field, and CodeChef only as a JavaScript array
+embedded in the profile page, there being no endpoint at all.
+\texttt{models/contests.py} normalises these into a single \texttt{ContestRecord}
+timeline. Two platform quirks had to be handled: LeetCode and CodeChef report only the
+rating \emph{after} each round, so deltas are reconstructed by walking the timeline in
+order, and both Codeforces and AtCoder report a debut delta measured from a rating of
+zero, which if summed naively makes ``all-time change'' identically equal to the current
+rating.
 
 The timeline supports two functions. The first is descriptive --- pace against the
 user's own history, plateau detection, volatility, positive-round rate, distance from
@@ -948,7 +959,9 @@ practice history against $0.94$ from contests.
 The calibration is confidence-weighted rather than absolute. Confidence grows with the
 number of rated rounds, decays once the record goes stale, and is discounted for
 LeetCode, whose contest rating is not expressed on a problem-difficulty scale and must
-be mapped by approximation. Whatever confidence is unclaimed falls back to the
+be mapped by approximation. CodeChef needs no such discount: it rates problems on the
+same scale it rates users, so one normaliser serves both and its contest rating maps
+directly --- the only platform besides Codeforces for which that is true. Whatever confidence is unclaimed falls back to the
 history-derived estimate, so a user with no contest record is scored exactly as before
 and the change degrades gracefully to the previous behaviour. Recent form additionally
 sets the stretch: a user losing rating is aimed close to their current level to
@@ -957,7 +970,7 @@ consolidate rather than pushed further out.
 This yields a clean division of labour, and it follows from what each signal can
 support. \emph{Contests decide how hard; solve history decides what topic.} Contests are
 far too sparse to say anything per topic --- a handful of problems per round against a
-taxonomy of $98$ tags --- while practice history covers hundreds of problems per user but
+taxonomy of $44$ tags --- while practice history covers hundreds of problems per user but
 cannot separate genuine ability from assisted solves.
 
 \subsection{Serving the Models: Fold-In for Unseen Users}
@@ -1747,13 +1760,13 @@ Split: leave-last-$N$, cap $10$ or $20\%$. Bootstrap: $2{,}000$ resamples.
 
 \section{Unified Tag Taxonomy}
 \label{app:taxonomy}
-The 43 canonical topics: array, backtracking, bfs, binary\_search, bitmask, brute\_force,
+The 44 canonical topics: array, backtracking, bfs, binary\_search, bitmask, brute\_force,
 combinatorics, constructive, data\_structures, design, dfs, divide\_and\_conquer,
 dynamic\_programming, fft, game\_theory, geometry, graphs, greedy, hash\_table, hashing,
 heap, implementation, linked\_list, math, matrix, monotonic\_stack, network\_flow,
 number\_theory, prefix\_sum, probability, queue, recursion, segment\_tree, shortest\_paths,
 simulation, sliding\_window, sorting, stack, string\_matching, strings, trees, trie,
-two\_pointers.
+two\_pointers, union\_find.
 
 \section{Reproduction}
 \label{app:repro}
