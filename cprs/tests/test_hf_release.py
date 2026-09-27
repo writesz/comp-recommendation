@@ -12,7 +12,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from scripts.export_hf_dataset import DEFAULT_REPO_ID, build_table, card, stats
+from scripts.export_hf_dataset import (
+    CANONICAL_TOPICS,
+    DEFAULT_REPO_ID,
+    build_table,
+    card,
+    stats,
+)
 from scripts.report_stats import TAXONOMY
 from scripts.upload_hf_dataset import ALLOWED, check_payload
 
@@ -114,10 +120,31 @@ def test_normalized_difficulty_in_unit_interval(table):
 def test_canonical_topic_flag_ignores_other_prefixed_labels(table):
     """``other:abc`` is a contest name, not a topic — it must not count."""
     only_other = table[
-        table["tags_unified"].map(lambda ts: bool(ts) and not any(t in TAXONOMY for t in ts))
+        table["tags_unified"].map(
+            lambda ts: bool(ts) and not any(t in CANONICAL_TOPICS for t in ts)
+        )
     ]
     assert not only_other.empty, "fixture no longer exercises the other: case"
     assert not only_other["has_canonical_topic"].any()
+
+
+def test_canonical_set_covers_every_tag_the_mapper_emits(table):
+    """report_stats' hand-maintained copy drifted from the map once already.
+
+    It omitted ``union_find``, so problems tagged only that were published as
+    having no topic. Deriving the set from the map is what prevents a repeat.
+    """
+    from models.unified_schema import UNIFIED_TAG_MAP
+
+    assert set(UNIFIED_TAG_MAP.values()) <= CANONICAL_TOPICS
+    assert TAXONOMY <= CANONICAL_TOPICS
+
+
+def test_union_find_counts_as_a_topic(table):
+    """The specific regression: 20 CodeChef problems tagged only union_find."""
+    uf = table[table["tags_unified"].map(lambda ts: ts == ["union_find"])]
+    assert not uf.empty
+    assert uf["has_canonical_topic"].all()
 
 
 PREFIX = {"codeforces": "cf", "atcoder": "ac", "codechef": "cc", "leetcode": "lc"}

@@ -6,7 +6,7 @@ a generated dataset card, and the statistics the card quotes.
 What is released is the *catalogue*: factual problem metadata gathered from
 public APIs, plus the three derived columns that are this project's own
 contribution -- normalised difficulty, the unified tag taxonomy, and the tags
-recovered for AtCoder by the NLP transfer tagger.
+recovered for AtCoder and CodeChef by the NLP transfer tagger.
 
 Two parts of ``data/`` are deliberately NOT released:
 
@@ -28,7 +28,17 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from models.unified_schema import UNIFIED_TAG_MAP
 from scripts.report_stats import TAXONOMY
+
+# The canonical topic set, taken from the tag map that actually produces the tags
+# rather than from report_stats' hand-maintained copy. The two drifted: the copy
+# omits ``union_find``, which the map emits and the report's taxonomy appendix
+# lists, so 20 problems tagged only ``union_find`` would otherwise be published
+# with has_canonical_topic=False. Deriving it here keeps the column right and
+# self-healing if the map gains targets. report_stats is left alone deliberately:
+# the report's figures are computed from it and are not this script's to move.
+CANONICAL_TOPICS = frozenset(TAXONOMY) | frozenset(UNIFIED_TAG_MAP.values())
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -114,9 +124,9 @@ def build_table():
 
     # ``other:*`` entries are unmapped platform labels (AtCoder contest series
     # such as ``abc``) and carry no topic information -- they must not count as
-    # coverage. Same rule as report_stats.py.
+    # coverage. Same rule as report_stats.py, over CANONICAL_TOPICS above.
     df["has_canonical_topic"] = df["tags_unified"].map(
-        lambda ts: any(t in TAXONOMY for t in ts)
+        lambda ts: any(t in CANONICAL_TOPICS for t in ts)
     )
 
     # CodeChef encodes "unrated" as a sentinel (-1, 0, 9999) rather than a null, so
@@ -137,8 +147,8 @@ def build_table():
 
 def stats(df):
     """Every number the dataset card quotes, regenerated from the table."""
-    canonical = sorted({t for ts in df["tags_unified"] for t in ts if t in TAXONOMY})
-    other = sorted({t for ts in df["tags_unified"] for t in ts if t not in TAXONOMY})
+    canonical = sorted({t for ts in df["tags_unified"] for t in ts if t in CANONICAL_TOPICS})
+    other = sorted({t for ts in df["tags_unified"] for t in ts if t not in CANONICAL_TOPICS})
 
     per_platform = {}
     for plat, g in df.groupby("platform"):
@@ -157,6 +167,8 @@ def stats(df):
     return {
         "n_problems": int(len(df)),
         "platforms": per_platform,
+        # The taxonomy defines more topics than any one snapshot exercises.
+        "n_taxonomy_defined": len(CANONICAL_TOPICS),
         "n_canonical_topics": len(canonical),
         "n_other_labels": len(other),
         "canonical_topics": canonical,
@@ -291,8 +303,8 @@ ways and tag topics in {NUMBER_WORD.get(n_plat, n_plat).lower()} different
 vocabularies — and AtCoder publishes no topic tags at all. That makes it
 impossible to ask a question as basic as "what should this learner attempt
 next?" across platforms. This dataset is the normalisation layer: one `[0,1]`
-difficulty scale, one taxonomy of {s['n_canonical_topics']} topics, and
-recovered topics where a platform published none.
+difficulty scale, one taxonomy of {s['n_taxonomy_defined']} canonical topics,
+and recovered topics where a platform published none.
 
 ## Columns
 
@@ -332,14 +344,15 @@ were a difficulty of its own.
 
 ### The taxonomy
 
-{s['n_canonical_topics']} canonical topics, plus {s['n_other_labels']} unmapped
-platform labels carried through with an `other:` prefix (contest-series names
-such as `other:abc`, platform-specific oddities). **`other:` labels are not
-topics** — filter with `has_canonical_topic` rather than checking whether
-`tags_unified` is non-empty.
+The taxonomy defines {s['n_taxonomy_defined']} canonical topics, of which
+{s['n_canonical_topics']} occur in this snapshot. Alongside them are
+{s['n_other_labels']} unmapped platform labels carried through with an `other:`
+prefix (contest-series names such as `other:abc`, platform-specific oddities).
+**`other:` labels are not topics** — filter with `has_canonical_topic` rather
+than checking whether `tags_unified` is non-empty.
 
 <details>
-<summary>The {s['n_canonical_topics']} canonical topics</summary>
+<summary>The {s['n_canonical_topics']} canonical topics present here</summary>
 
 {', '.join('`' + t + '`' for t in s['canonical_topics'])}
 
@@ -446,7 +459,7 @@ or the kenkoooo AtCoder Problems project.
   is corpus access, not modelling: most AtCoder statements could not be
   retrieved, so the tagger had nothing to score.
 - **Tag mapping is lossy.** Collapsing {NUMBER_WORD.get(n_plat, n_plat).lower()}
-  vocabularies into {s['n_canonical_topics']} topics merges distinctions some
+  vocabularies into {s['n_taxonomy_defined']} topics merges distinctions some
   platforms make.
 - **LeetCode difficulty is three-valued**, as noted above.
 - **`solve_count` semantics differ** between platforms and are not directly
