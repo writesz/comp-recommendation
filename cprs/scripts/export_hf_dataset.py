@@ -310,10 +310,22 @@ band = ds.filter(
 
 ## Provenance and terms
 
-All metadata was collected from **public endpoints only** — the Codeforces API,
-the kenkoooo AtCoder Problems API, and public LeetCode problem listings — with a
-fixed polite request delay, exponential-backoff retries and resumable caching.
-No authenticated or private data was accessed.
+All metadata was collected from **public endpoints only**, with a fixed polite
+request delay, exponential-backoff retries and resumable caching. No
+authenticated or private data was accessed.
+
+| Source | What it feeds |
+|---|---|
+| [Codeforces API](https://codeforces.com/apiHelp) | Codeforces catalogue, problemsetter ratings, tags |
+| [kenkoooo AtCoder Problems](https://kenkoooo.com/atcoder/) | AtCoder catalogue and its difficulty estimates |
+| LeetCode public problem listing | LeetCode catalogue and Easy/Medium/Hard bands |
+| [atcoder.jp](https://atcoder.jp/) user contest history | **Nothing in this dataset** — contest ratings for the parent project's skill model |
+
+Three platforms, four sources: AtCoder takes two, and is the one platform whose
+metadata here is not first-party. It publishes neither topic tags nor an
+official difficulty, so difficulty comes from the community-run kenkoooo
+estimate and topics from the NLP tagger described above — which is why AtCoder
+is also the least completely covered platform in the table at the top.
 
 **Problem statements are not included in this dataset.** They remain the
 copyright of the respective platforms; the tagger was trained on them locally
@@ -326,9 +338,9 @@ the project's commitment to use that cohort only in aggregate.
 The `cc-by-4.0` licence applies to **this compilation and its derived columns**
 — the normalised difficulty, the unified taxonomy and the predicted tags. Facts
 about the underlying problems (titles, identifiers, URLs, solve counts) are the
-platforms' own. This dataset is not affiliated with or endorsed by Codeforces,
-AtCoder or LeetCode. AtCoder difficulty estimates are courtesy of the
-[kenkoooo AtCoder Problems](https://kenkoooo.com/atcoder/) project.
+platforms' own, and the AtCoder difficulty estimates are the kenkoooo project's.
+This dataset is not affiliated with or endorsed by Codeforces, AtCoder, LeetCode
+or the kenkoooo AtCoder Problems project.
 
 ## Known limitations
 
