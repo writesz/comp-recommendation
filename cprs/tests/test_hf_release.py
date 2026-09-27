@@ -75,9 +75,9 @@ def test_upload_payload_rejects_incomplete_release(tmp_path, monkeypatch):
 
 # --- provenance the card promises -------------------------------------------
 
-def test_predicted_tags_are_atcoder_only(table):
-    """Only AtCoder lacked tags, so only AtCoder rows may carry model output."""
-    assert set(table.loc[table["tags_predicted"], "platform"]) == {"atcoder"}
+def test_predicted_tags_only_on_platforms_the_tagger_targets(table):
+    """Codeforces and LeetCode publish their own tags; neither is ever overwritten."""
+    assert set(table.loc[table["tags_predicted"], "platform"]) <= {"atcoder", "codechef"}
 
 
 @pytest.mark.skipif(
@@ -85,10 +85,16 @@ def test_predicted_tags_are_atcoder_only(table):
     reason="derived stats not built; run scripts/report_stats.py",
 )
 def test_predicted_flag_matches_tagger_coverage(table):
-    """The flag must agree with the coverage the report states independently."""
+    """The flag must agree with the coverage the report states independently.
+
+    Checked per platform: AtCoder had no tags of its own, so its post-tagger
+    topic count is exactly what the tagger supplied.
+    """
     with open(DATA / "report_stats.json") as f:
-        expected = json.load(f)["tagger_coverage"]["atcoder"]["topic_tagged_after"]
-    assert int(table["tags_predicted"].sum()) == expected
+        coverage = json.load(f)["tagger_coverage"]["atcoder"]
+    assert coverage["topic_tagged_before"] == 0, "AtCoder is no longer the empty case"
+    predicted = table[table["platform"] == "atcoder"]["tags_predicted"].sum()
+    assert int(predicted) == coverage["topic_tagged_after"]
 
 
 def test_predicted_rows_actually_have_tags(table):
@@ -114,11 +120,37 @@ def test_canonical_topic_flag_ignores_other_prefixed_labels(table):
     assert not only_other["has_canonical_topic"].any()
 
 
+PREFIX = {"codeforces": "cf", "atcoder": "ac", "codechef": "cc", "leetcode": "lc"}
+
+
 def test_ids_unique_and_well_formed(table):
     assert table["cprs_id"].is_unique
-    assert (table["cprs_id"].str.split(":").str[0].isin(
-        {"cf", "ac", "lc"}
-    )).all()
+    assert (table["cprs_id"].str.split(":").str[0].isin(set(PREFIX.values()))).all()
+
+
+def test_id_prefix_matches_platform(table):
+    """A cc: id filed under atcoder would silently corrupt every per-platform figure."""
+    expected = table["platform"].map(PREFIX)
+    assert (table["cprs_id"].str.split(":").str[0] == expected).all()
+
+
+def test_every_platform_has_a_difficulty_scale(table):
+    """A platform missing from DIFFICULTY_SOURCE would publish null provenance."""
+    from scripts.export_hf_dataset import DIFFICULTY_SCALE, DIFFICULTY_SOURCE
+
+    platforms = set(table["platform"])
+    assert platforms <= set(DIFFICULTY_SOURCE)
+    assert platforms <= set(DIFFICULTY_SCALE)
+
+
+def test_no_codechef_sentinel_difficulty_survives(table):
+    """CodeChef encodes 'unrated' as -1/0/9999; none may reach the published table.
+
+    Scoped to CodeChef deliberately: AtCoder's scale starts below zero, so -1 and
+    0 are real difficulties there (both normalise to ~0.111) and must survive.
+    """
+    cc = table[table["platform"] == "codechef"]["difficulty_raw"].dropna()
+    assert not cc.isin([-1, 0, 9999]).any()
 
 
 # --- the card is generated, not transcribed ---------------------------------

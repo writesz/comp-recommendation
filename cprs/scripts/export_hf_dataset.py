@@ -44,7 +44,19 @@ TAG_SEP = "|"
 DIFFICULTY_SOURCE = {
     "codeforces": "codeforces_rating",      # 800-3500, problemsetter-assigned
     "atcoder": "atcoder_estimate",          # kenkoooo Elo-style estimate, ~-500-4000
+    "codechef": "codechef_rating",          # 200-4000, with sentinels for "unrated"
     "leetcode": "leetcode_band",            # Easy/Medium/Hard -> 0.2/0.5/0.85
+}
+
+# Human-readable native scale, for the card's normalisation table.
+DIFFICULTY_SCALE = {
+    "codeforces": ("Problemsetter rating, 800–3500", "Clipped, then linear"),
+    "atcoder": (
+        "[kenkoooo](https://kenkoooo.com/atcoder/) Elo-style estimate, ≈ −500–4000",
+        "Clipped, then linear",
+    ),
+    "codechef": ("Difficulty rating, 200–4000", "Clipped, then linear"),
+    "leetcode": ("Easy / Medium / Hard", "0.2 / 0.5 / 0.85"),
 }
 
 # Column order in the published table.
@@ -107,9 +119,14 @@ def build_table():
         lambda ts: any(t in TAXONOMY for t in ts)
     )
 
+    # CodeChef encodes "unrated" as a sentinel (-1, 0, 9999) rather than a null, so
+    # difficulty_raw can hold a number where no difficulty actually exists. The
+    # normalisation already rejects those; carry the rejection into the raw column
+    # so the published table never shows -1 as a difficulty.
+    unrated = df["difficulty_normalized"].isna()
+    df.loc[unrated, "difficulty_raw"] = None
     df["difficulty_source"] = df["platform"].map(DIFFICULTY_SOURCE)
-    # A platform's scale label is meaningless where no difficulty is recorded.
-    df.loc[df["difficulty_raw"].isna(), "difficulty_source"] = None
+    df.loc[unrated, "difficulty_source"] = None
 
     df["contest_id"] = df["contest_id"].astype("string")
     df["solve_count"] = df["solve_count"].astype("Int64")
@@ -171,8 +188,59 @@ def f1_table(scores, n=6):
     return "\n".join(rows)
 
 
+PLATFORM_LABEL = {
+    "codeforces": "Codeforces",
+    "atcoder": "AtCoder",
+    "codechef": "CodeChef",
+    "leetcode": "LeetCode",
+}
+
+# Largest catalogue first, so the table reads in the order that matters.
+def ordered_platforms(s):
+    return sorted(s["platforms"], key=lambda p: -s["platforms"][p]["n"])
+
+
+def platform_table(s):
+    rows = []
+    for p in ordered_platforms(s):
+        g = s["platforms"][p]
+        rows.append(
+            f"| {PLATFORM_LABEL.get(p, p)} | {g['n']:,} | {g['with_difficulty']:,} "
+            f"| {g['with_canonical_topic']:,} | {g['predicted_tags']:,} |"
+        )
+    rows.append(
+        f"| **Total** | **{s['n_problems']:,}** | **{s['with_difficulty']:,}** "
+        f"| **{s['with_canonical_topic']:,}** | **{s['predicted_tags_total']:,}** |"
+    )
+    return "\n".join(rows)
+
+
+def difficulty_table(s):
+    rows = []
+    for p in ordered_platforms(s):
+        scale, mapping = DIFFICULTY_SCALE[p]
+        rows.append(f"| {PLATFORM_LABEL.get(p, p)} | {scale} | {mapping} |")
+    return "\n".join(rows)
+
+
+NUMBER_WORD = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
+
+
+def prose_list(names, conjunction="and"):
+    """``a``, ``b`` and ``c`` — for naming the platforms in running text."""
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} {conjunction} {names[-1]}"
+
+
 def card(s, scores, macro, repo_id):
     plat = s["platforms"]
+    names = [PLATFORM_LABEL.get(p, p) for p in ordered_platforms(s)]
+    bold_names = prose_list([f"**{n}**" for n in names])
+    n_plat = len(names)
+    # Platforms whose tags the NLP tagger supplied, largest contribution first.
+    tagged = [p for p in ordered_platforms(s) if plat[p]["predicted_tags"]]
+    tagged_names = prose_list([PLATFORM_LABEL.get(p, p) for p in tagged])
     return f"""---
 license: cc-by-4.0
 language:
@@ -183,6 +251,7 @@ tags:
   - recommender-systems
   - codeforces
   - atcoder
+  - codechef
   - leetcode
 task_categories:
   - tabular-classification
@@ -199,36 +268,38 @@ configs:
 
 # CPRS — Cross-Platform Competitive Programming Problem Catalogue
 
-{s['n_problems']:,} competitive-programming problems from **Codeforces**, **AtCoder**
-and **LeetCode**, normalised onto a single difficulty scale and a single topic
-taxonomy so that problems from different platforms can be compared directly.
+{s['n_problems']:,} competitive-programming problems from {bold_names},
+normalised onto a single difficulty scale and a single topic taxonomy so that
+problems from different platforms can be compared directly.
 
 Built for [CPRS](https://github.com/writesz/comp-recommendation), a cross-platform
 problem recommender (CM3070 final project, University of London).
 
 | Platform | Problems | With difficulty | With a topic | Topics from the NLP tagger |
 |---|---:|---:|---:|---:|
-| Codeforces | {plat['codeforces']['n']:,} | {plat['codeforces']['with_difficulty']:,} | {plat['codeforces']['with_canonical_topic']:,} | {plat['codeforces']['predicted_tags']:,} |
-| AtCoder | {plat['atcoder']['n']:,} | {plat['atcoder']['with_difficulty']:,} | {plat['atcoder']['with_canonical_topic']:,} | {plat['atcoder']['predicted_tags']:,} |
-| LeetCode | {plat['leetcode']['n']:,} | {plat['leetcode']['with_difficulty']:,} | {plat['leetcode']['with_canonical_topic']:,} | {plat['leetcode']['predicted_tags']:,} |
-| **Total** | **{s['n_problems']:,}** | **{s['with_difficulty']:,}** | **{s['with_canonical_topic']:,}** | **{s['predicted_tags_total']:,}** |
+{platform_table(s)}
+
+Coverage is deliberately not uniform, and the table above is the first thing to
+read: a platform's row tells you how much of it is actually usable for
+difficulty-aware or topic-aware work.
 
 ## Why this exists
 
-The three largest competitive-programming platforms describe difficulty in three
-incompatible ways and tag topics in three different vocabularies — and AtCoder
-publishes no topic tags at all. That makes it impossible to ask a question as
-basic as "what should this learner attempt next?" across platforms. This dataset
-is the normalisation layer: one `[0,1]` difficulty scale, one taxonomy of
-{s['n_canonical_topics']} topics, and recovered topics where a platform
-published none.
+{NUMBER_WORD.get(n_plat, n_plat)} of the largest competitive-programming judges
+describe difficulty in {NUMBER_WORD.get(n_plat, n_plat).lower()} incompatible
+ways and tag topics in {NUMBER_WORD.get(n_plat, n_plat).lower()} different
+vocabularies — and AtCoder publishes no topic tags at all. That makes it
+impossible to ask a question as basic as "what should this learner attempt
+next?" across platforms. This dataset is the normalisation layer: one `[0,1]`
+difficulty scale, one taxonomy of {s['n_canonical_topics']} topics, and
+recovered topics where a platform published none.
 
 ## Columns
 
 | Column | Type | Notes |
 |---|---|---|
 | `cprs_id` | string | Stable unified key, `{{platform}}:{{platform_id}}` |
-| `platform` | string | `codeforces` / `atcoder` / `leetcode` |
+| `platform` | string | {' / '.join('`' + p + '`' for p in ordered_platforms(s))} |
 | `platform_id` | string | Native identifier |
 | `name` | string | Problem title |
 | `url` | string | Canonical link to the problem on its platform |
@@ -248,13 +319,16 @@ published none.
 
 | Platform | Native scale | Mapping to `[0,1]` |
 |---|---|---|
-| Codeforces | Problemsetter rating, 800–3500 | Clipped, then linear |
-| AtCoder | [kenkoooo](https://kenkoooo.com/atcoder/) Elo-style estimate, ≈ −500–4000 | Clipped, then linear |
-| LeetCode | Easy / Medium / Hard | 0.2 / 0.5 / 0.85 |
+{difficulty_table(s)}
 
 The LeetCode mapping is the weak link: three bands cannot capture within-band
-spread, so LeetCode difficulty is coarser than the other two. Treat
+spread, so LeetCode difficulty is coarser than the rest. Treat
 `difficulty_normalized` as ordinal-comparable, not interval-comparable.
+
+`difficulty_raw` is null wherever no difficulty exists. CodeChef marks unrated
+problems with sentinel values (`-1`, `0`, `9999`) rather than leaving the field
+empty; those are normalised away here, so a sentinel never appears as though it
+were a difficulty of its own.
 
 ### The taxonomy
 
@@ -273,11 +347,18 @@ topics** — filter with `has_canonical_topic` rather than checking whether
 
 ## ⚠️ Predicted tags: read this before using `tags_unified`
 
-AtCoder publishes no topic tags. {plat['atcoder']['predicted_tags']:,} AtCoder
-problems here carry tags from a TF-IDF + one-vs-rest logistic-regression
-classifier trained on tagged Codeforces statements and transferred across
-platforms. **These are model output, not ground truth**, and their quality
-varies enormously by tag:
+{s['predicted_tags_total']:,} problems — {tagged_names} — carry tags from a
+TF-IDF + one-vs-rest logistic-regression classifier trained on tagged Codeforces
+statements and pointed at the other judges. **These are model output, not ground
+truth.** The two target platforms are tagged under different regimes:
+
+- **AtCoder** ({plat['atcoder']['predicted_tags']:,} problems) publishes no
+  topic tags at all, so the tagger writes into an empty field.
+- **CodeChef** ({plat['codechef']['predicted_tags']:,} problems) publishes its
+  own coarse tags for part of its catalogue, so predictions fill only the gaps.
+  A problem CodeChef labelled itself keeps its own label.
+
+Quality varies enormously by tag:
 
 | Tag | Cross-validated F1 |
 |---|---:|
@@ -288,10 +369,14 @@ strong lexical signature (`strings`, `math`) transfer well; tags that describe a
 *solution technique* invisible in the problem text (`dynamic_programming`,
 `two_pointers`) are near-useless — a statement rarely says it wants a DP.
 
-Only tags above a confidence threshold were written, which is why
-{plat['atcoder']['predicted_tags']:,} of {plat['atcoder']['n']:,} AtCoder
-problems are tagged rather than all of them. **Filter on `tags_predicted` if you
-need human-assigned tags only.**
+Read those figures as an upper bound. They are cross-validated on **held-out
+Codeforces** statements, which is the tagger's training domain; accuracy on
+AtCoder and CodeChef statements, written by different setters in a different
+house style, is not separately measured and is unlikely to be better.
+
+Only tags above a confidence threshold were written, which is why a minority of
+each target platform is tagged rather than all of it. **Filter on
+`tags_predicted` if you need human-assigned tags only.**
 
 ## Usage
 
@@ -300,7 +385,7 @@ from datasets import load_dataset
 
 ds = load_dataset("{repo_id}", split="train")
 
-# Human-tagged problems in a difficulty band, across all three platforms
+# Human-tagged problems in a difficulty band, across all {n_plat} platforms
 band = ds.filter(
     lambda r: not r["tags_predicted"]
     and r["difficulty_normalized"] is not None
@@ -318,14 +403,14 @@ authenticated or private data was accessed.
 |---|---|
 | [Codeforces API](https://codeforces.com/apiHelp) | Codeforces catalogue, problemsetter ratings, tags |
 | [kenkoooo AtCoder Problems](https://kenkoooo.com/atcoder/) | AtCoder catalogue and its difficulty estimates |
+| [CodeChef](https://www.codechef.com/) public problem endpoints | CodeChef catalogue, difficulty ratings, its own coarse tags |
 | LeetCode public problem listing | LeetCode catalogue and Easy/Medium/Hard bands |
 | [atcoder.jp](https://atcoder.jp/) user contest history | **Nothing in this dataset** — contest ratings for the parent project's skill model |
 
-Three platforms, four sources: AtCoder takes two, and is the one platform whose
-metadata here is not first-party. It publishes neither topic tags nor an
+{n_plat} platforms, five sources: AtCoder takes two, and is the one platform
+whose metadata here is not first-party. It publishes neither topic tags nor an
 official difficulty, so difficulty comes from the community-run kenkoooo
-estimate and topics from the NLP tagger described above — which is why AtCoder
-is also the least completely covered platform in the table at the top.
+estimate and topics from the NLP tagger described above.
 
 **Problem statements are not included in this dataset.** They remain the
 copyright of the respective platforms; the tagger was trained on them locally
@@ -346,11 +431,23 @@ or the kenkoooo AtCoder Problems project.
 
 - **Snapshot, not a feed.** Collected mid-2025; neither problems added since nor
   drifting solve counts are reflected.
-- **Coverage is uneven.** {plat['atcoder']['with_canonical_topic']:,} of
-  {plat['atcoder']['n']:,} AtCoder problems have any topic at all, and only
-  {plat['atcoder']['with_difficulty']:,} have a difficulty estimate.
-- **Tag mapping is lossy.** Collapsing three vocabularies into
-  {s['n_canonical_topics']} topics merges distinctions some platforms make.
+- **CodeChef is the largest platform here and the thinnest.** It contributes
+  {plat['codechef']['n']:,} problems — more than any other — but only
+  {plat['codechef']['with_difficulty']:,}
+  ({plat['codechef']['with_difficulty'] / plat['codechef']['n']:.0%}) carry a
+  difficulty and {plat['codechef']['with_canonical_topic']:,}
+  ({plat['codechef']['with_canonical_topic'] / plat['codechef']['n']:.0%}) carry
+  a topic. Its practice archive is largely unrated and untagged at source. Weight
+  it accordingly: on raw counts it dominates the catalogue, but on rows usable
+  for difficulty- or topic-aware work it does not.
+- **AtCoder topic coverage is low.** {plat['atcoder']['with_canonical_topic']:,}
+  of {plat['atcoder']['n']:,} AtCoder problems have any topic at all, and only
+  {plat['atcoder']['with_difficulty']:,} have a difficulty estimate. The ceiling
+  is corpus access, not modelling: most AtCoder statements could not be
+  retrieved, so the tagger had nothing to score.
+- **Tag mapping is lossy.** Collapsing {NUMBER_WORD.get(n_plat, n_plat).lower()}
+  vocabularies into {s['n_canonical_topics']} topics merges distinctions some
+  platforms make.
 - **LeetCode difficulty is three-valued**, as noted above.
 - **`solve_count` semantics differ** between platforms and are not directly
   comparable; use it for within-platform popularity only.
