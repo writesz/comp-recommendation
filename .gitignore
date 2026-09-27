@@ -7,6 +7,9 @@
 # Derived interaction file — regenerable from cf_submissions.jsonl via build_interactions.py
 cprs/data/interactions/events_filtered.jsonl
 
+# Hugging Face release payload — regenerable via scripts/export_hf_dataset.py
+cprs/data/hf_release/
+
 # SQLite DB with real user credentials (password hashes, sessions) — never publish
 cprs/data/*.db
 cprs/data/*.db-shm
@@ -34,3 +37,13 @@ cprs/data/report_stats.json
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+
+# Report sources and project paperwork — submitted through the report
+# hand-in, not through the code repository.
+CLAUDE.md
+REQUIREMENTS.md
+preliminary_report_feedback.md
+cprs/final_report.tex
+cprs/preliminary_report.md
+cprs/preliminary_report.tex
+cprs/requirements.txt
